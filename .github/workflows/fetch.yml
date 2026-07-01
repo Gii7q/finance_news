@@ -2,41 +2,55 @@ name: 每日自动抓取新闻
 
 on:
   schedule:
-    - cron: '0 8 * * *'
-  workflow_dispatch:
+    - cron: '0 8 * * *'  # 每天 UTC 8:00 (北京时间 16:00) 运行
+  workflow_dispatch:      # 支持手动触发
 
 jobs:
   fetch-news:
     runs-on: ubuntu-latest
     
     steps:
+      # 1. 拉取代码
       - name: 拉取代码
         uses: actions/checkout@v4
       
+      # 2. 设置 Python 环境
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       
+      # 3. 安装依赖
       - name: 安装依赖
         run: |
+          pip install --upgrade pip
           pip install requests beautifulsoup4 lxml
       
+      # 4. 抓取新闻并发送邮件
       - name: 抓取新闻并发送邮件
-        run: python main.py
+        run: |
+          echo "========== 开始执行 main.py =========="
+          python main.py
+          echo "========== main.py 执行完毕 =========="
+          echo "--- 检查数据库内容 ---"
+          echo "新闻总数: $(sqlite3 finance.db 'SELECT COUNT(*) FROM news;')"
+          echo "订阅者总数: $(sqlite3 finance.db 'SELECT COUNT(*) FROM subscribers;')"
         env:
+          # 这些环境变量会被 main.py 读取
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          # main.py 会从数据库读取所有订阅者，不再需要 RECEIVER_EMAIL
       
+      # 5. 上传数据库到 PythonAnywhere
       - name: 上传数据库到 PythonAnywhere
         env:
           PA_USERNAME: ${{ secrets.PYTHONANYWHERE_USERNAME }}
           PA_TOKEN: ${{ secrets.PYTHONANYWHERE_API_TOKEN }}
         run: |
           if [ -f "finance.db" ]; then
+            echo "📤 正在上传 finance.db (大小: $(du -h finance.db | cut -f1)) ..."
             curl -X POST \
               -H "Authorization: Token ${PA_TOKEN}" \
               -F "content=@finance.db" \
@@ -44,21 +58,25 @@ jobs:
               https://www.pythonanywhere.com/api/v0/user/${PA_USERNAME}/files/path/home/ppy/mysite/finance.db
             echo "✅ 数据库上传成功"
           else
-            echo "❌ finance.db 不存在"
+            echo "❌ 错误: finance.db 文件不存在！"
+            exit 1
           fi
       
+      # 6. 重载 PythonAnywhere 网站
       - name: 重载网站
         env:
           PA_USERNAME: ${{ secrets.PYTHONANYWHERE_USERNAME }}
           PA_TOKEN: ${{ secrets.PYTHONANYWHERE_API_TOKEN }}
         run: |
+          echo "🔄 正在重载 PythonAnywhere 网站..."
           curl -X POST \
             -H "Authorization: Token ${PA_TOKEN}" \
             https://www.pythonanywhere.com/api/v0/user/${PA_USERNAME}/webapps/ppy.pythonanywhere.com/reload/
           echo "✅ 网站已重载"
       
+      # 7. 备份数据库 (作为 Actions 的 Artifact)
       - name: 备份数据库
         uses: actions/upload-artifact@v4
         with:
-          name: finance-db
+          name: finance-db-backup
           path: finance.db
