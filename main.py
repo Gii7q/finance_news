@@ -3,6 +3,7 @@ import sqlite3
 import os
 import logging
 import smtplib
+import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -33,11 +34,17 @@ def fetch_news():
                     full_link = 'https://finance.sina.com.cn' + href
                 else:
                     full_link = href
+                
+                # 获取文章摘要（抓取正文前几句）
+                summary = fetch_article_summary(full_link, headers)
+                if not summary:
+                    summary = "来源: 新浪财经"
+                
                 articles.append({
                     "title": title[:100],
                     "link": full_link,
                     "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "summary": "来源: 新浪财经"
+                    "summary": summary
                 })
                 if len(articles) >= 10:
                     break
@@ -45,6 +52,41 @@ def fetch_news():
     except Exception as e:
         logging.error("抓取失败: " + str(e))
     return articles
+
+def fetch_article_summary(url, headers):
+    """从文章页面提取摘要（正文前几句）"""
+    try:
+        response = requests.get(url, headers=headers, timeout=8)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 查找文章正文
+        article_body = soup.find('div', {'class': 'article'}) or soup.find('div', {'id': 'article'}) or soup.find('div', class_=re.compile(r'content|article|body'))
+        
+        if article_body:
+            # 提取所有段落
+            paragraphs = article_body.find_all('p')
+            text_parts = []
+            for p in paragraphs[:3]:  # 取前3段
+                text = p.get_text().strip()
+                if len(text) > 20:  # 过滤掉太短的
+                    text_parts.append(text)
+            
+            if text_parts:
+                summary = ' '.join(text_parts)[:200]  # 取前200字
+                return summary
+        
+        # 备用方法：找所有文本
+        texts = soup.find_all('p')
+        for p in texts[:5]:
+            text = p.get_text().strip()
+            if len(text) > 30:
+                return text[:200]
+        
+        return ""
+    except Exception as e:
+        logging.warning("获取文章摘要失败: " + str(e))
+        return ""
 
 def save_to_db(articles):
     conn = sqlite3.connect('finance.db')
@@ -77,13 +119,18 @@ def send_email(articles):
     try:
         today = datetime.now().strftime("%Y-%m-%d")
         html = "<h2>📈 今日金融新闻简报 - " + today + "</h2>"
-        html += "<p>共 " + str(len(articles)) + " 条新新闻</p ><hr>"
+        html += "<p>共 " + str(len(articles)) + " 条新闻</p ><hr>"
         
-        for idx, art in enumerate(articles[:10], 1):
+        for idx, art in enumerate(articles[:15], 1):
             html += '<div style="margin-bottom:15px; padding:10px; border-left: 3px solid #2980b9;">'
             html += '<h3 style="margin:0 0 5px 0;">' + str(idx) + '. <a href="' + art['link'] + '" style="color:#2980b9;">' + art['title'] + '</a ></h3>'
-            html += '<p style="color:#555; margin:5px 0;">' + art['summary'] + '</p >'
-            html += '<small style="color:#888;">' + art['published'] + '</small>'
+            
+            # 摘要部分
+            summary = art['summary']
+            if summary and len(summary) > 5:
+                html += '<p style="color:#555; margin:5px 0; font-size:14px;">📌 ' + summary + '</p >'
+            
+            html += '<small style="color:#888;">🕐 ' + art['published'] + ' | 🔗 <a href="' + art['link'] + '" style="color:#2980b9;">查看原文</a ></small>'
             html += '</div><hr>'
         
         html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p >"
