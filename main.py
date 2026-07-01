@@ -297,7 +297,7 @@ def save_to_db(articles):
 # ===== 发送邮件给所有订阅者 =====
 def send_email(articles):
     if not articles:
-        logging.info("没有新新闻，跳过邮件发送")
+        logging.info("没有新闻内容，跳过邮件发送")
         return
     
     subscribers = get_subscribers()
@@ -323,6 +323,7 @@ def send_email(articles):
         html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p>"
         html += "<p style='color:#888; font-size:12px;'>📧 如需取消订阅，请访问网站操作</p>"
         
+        # 构建邮件
         msg = MIMEMultipart()
         msg['From'] = SENDER_EMAIL
         msg['Subject'] = "📈 金融新闻简报 " + today
@@ -331,29 +332,34 @@ def send_email(articles):
         success_count = 0
         for subscriber in subscribers:
             try:
-                msg['To'] = subscriber
+                # 每个订阅者单独发送（避免被识别为垃圾邮件）
+                msg_copy = MIMEMultipart()
+                msg_copy['From'] = SENDER_EMAIL
+                msg_copy['To'] = subscriber
+                msg_copy['Subject'] = "📈 金融新闻简报 " + today
+                msg_copy.attach(MIMEText(html, 'html', 'utf-8'))
+                
                 with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
                     server.login(SENDER_EMAIL, SENDER_PASSWORD)
-                    server.sendmail(SENDER_EMAIL, subscriber, msg.as_string())
+                    server.sendmail(SENDER_EMAIL, subscriber, msg_copy.as_string())
                 success_count += 1
-                logging.info("已发送到: " + subscriber)
+                logging.info("✅ 已发送到: " + subscriber)
             except Exception as e:
-                logging.error("发送到 " + subscriber + " 失败: " + str(e))
+                logging.error("❌ 发送到 " + subscriber + " 失败: " + str(e))
         
-        logging.info("邮件发送完成！成功 " + str(success_count) + " 个订阅者")
+        logging.info("📧 邮件发送完成！成功 " + str(success_count) + " 个订阅者")
     except Exception as e:
-        logging.error("邮件发送失败: " + str(e))
+        logging.error("❌ 邮件发送失败: " + str(e))
 
 # ===== 主程序入口 =====
 if __name__ == "__main__":
-    logging.info("开始执行...")
+    logging.info("🚀 开始执行...")
     articles = fetch_news()
     if articles:
         new_count = save_to_db(articles)
-        if new_count > 0:
-            send_email(articles)
-        else:
-            logging.info("没有新新闻，不发送邮件")
+        logging.info("📊 本次新增 " + str(new_count) + " 条新闻")
+        # 只要有新闻内容就发送邮件（无论是否新增）
+        send_email(articles)
     else:
-        logging.info("未抓取到新闻")
-    logging.info("执行完成")
+        logging.info("⚠️ 未抓取到新闻")
+    logging.info("✅ 执行完成")
