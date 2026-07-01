@@ -2,13 +2,6 @@ import requests
 import sqlite3
 import smtplib
 import os
-
-# 从环境变量读取（GitHub Actions 会自动注入）
-SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
-RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.qq.com")
-SMTP_PORT = os.getenv("SMTP_PORT", "465")
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
