@@ -1,7 +1,6 @@
 from flask import Flask, request, render_template_string, jsonify
 import sqlite3
 from datetime import datetime
-import main
 
 app = Flask(__name__)
 
@@ -118,20 +117,6 @@ HTML_TEMPLATE = """
             margin: 6px 0;
             line-height: 1.6;
         }
-        .news-item .ai-summary {
-            background: #f8f9fa;
-            padding: 8px 14px;
-            border-radius: 6px;
-            font-size: 14px;
-            color: #2c3e50;
-            margin: 8px 0;
-            border-left: 3px solid #27ae60;
-        }
-        .news-item .ai-summary::before {
-            content: "🤖 AI摘要：";
-            font-weight: bold;
-            color: #27ae60;
-        }
         .news-item .meta {
             color: #888;
             font-size: 12px;
@@ -168,17 +153,17 @@ HTML_TEMPLATE = """
 <body>
     <div class="header">
         <h1>📈 金融新闻简报</h1>
-        <p>共 {{ news_count }} 条新闻 · 数据来源：新浪财经、东方财富</p >
-        <span class="badge">🤖 AI智能摘要</span>
+        <p>共 {{ news_count }} 条新闻 · 数据来源：新浪财经、东方财富</p>
+        <span class="badge">📊 每日自动更新</span>
     </div>
 
     <div class="toolbar">
         <form method="GET" style="flex:1;display:flex;gap:10px;flex-wrap:wrap;">
             <input type="text" name="search" placeholder="🔍 搜索新闻..." value="{{ search_query }}">
             <button type="submit" class="btn btn-primary">搜索</button>
-            <a href=" " class="btn btn-success">清除</a >
+            <a href="/" class="btn btn-success">清除</a>
         </form>
-        <a href="/fetch" class="btn btn-primary">🔄 更新新闻</a >
+        <a href="/fetch" class="btn btn-primary">🔄 更新新闻</a>
     </div>
 
     <div class="stats">
@@ -194,30 +179,26 @@ HTML_TEMPLATE = """
         <div class="news-item">
             <span class="source">{{ item[4] }}</span>
             <h3>
-                <a href="{{ item[3] }}" target="_blank">{{ item[0] }}</a >
+                <a href="{{ item[3] }}" target="_blank">{{ item[0] }}</a>
             </h3>
-            {% if item[5] and item[5]|length > 10 %}
-            <div class="ai-summary">{{ item[5] }}</div>
-            {% else %}
             <div class="summary">{{ item[1] }}</div>
-            {% endif %}
             <div class="meta">
                 <span>🕐 {{ item[2] }}</span>
-                <span>🔗 <a href="{{ item[3] }}" target="_blank">查看原文</a ></span>
+                <span>🔗 <a href="{{ item[3] }}" target="_blank">查看原文</a></span>
             </div>
         </div>
         {% endfor %}
     {% else %}
         <div class="empty">
-            <p>📭 暂无新闻</p >
-            <p style="font-size:14px;margin-top:8px;">点击「更新新闻」抓取最新资讯</p >
+            <p>📭 暂无新闻</p>
+            <p style="font-size:14px;margin-top:8px;">点击「更新新闻」抓取最新资讯</p>
         </div>
     {% endif %}
 
     <div class="footer">
-        ⚠️ 本简报由AI自动生成，仅供参考，不构成投资建议。
+        ⚠️ 本简报仅供参考，不构成投资建议。
         <br>
-        自动更新于 {{ update_time }}
+        最后更新：{{ update_time }}
     </div>
 </body>
 </html>
@@ -228,24 +209,17 @@ def index():
     """首页 - 显示新闻列表（支持搜索）"""
     search_query = request.args.get('search', '').strip()
     
-    conn = sqlite3.connect('finance.db')
+    conn = sqlite3.connect('/home/ppy/mysite/finance.db')
     c = conn.cursor()
     
     if search_query:
-        # 搜索功能
-        c.execute("""SELECT title, summary, published, link, 
-                     CASE WHEN summary LIKE '%新浪%' THEN '新浪财经' ELSE '东方财富' END as source,
-                     ai_summary
+        c.execute("""SELECT title, summary, published, link, source 
                      FROM news 
-                     WHERE title LIKE ? OR summary LIKE ? OR ai_summary LIKE ?
+                     WHERE title LIKE ? OR summary LIKE ? OR source LIKE ?
                      ORDER BY id DESC LIMIT 50""", 
-                  (f'%{search_query}%', f'%{search_query}%', f'%{search_query}%'))
+                  ('%' + search_query + '%', '%' + search_query + '%', '%' + search_query + '%'))
     else:
-        c.execute("""SELECT title, summary, published, link, 
-                     CASE WHEN summary LIKE '%新浪%' THEN '新浪财经' ELSE '东方财富' END as source,
-                     ai_summary
-                     FROM news 
-                     ORDER BY id DESC LIMIT 50""")
+        c.execute("SELECT title, summary, published, link, source FROM news ORDER BY id DESC LIMIT 50")
     
     news = c.fetchall()
     conn.close()
@@ -260,39 +234,28 @@ def index():
 
 @app.route('/fetch')
 def fetch_news():
-    """手动触发抓取"""
+    """手动触发抓取（调用 main.py）"""
     try:
-        articles = main.fetch_news()
-        if articles:
-            main.save_to_db(articles)
-        return f"""
-        <html><body style="font-family:sans-serif;text-align:center;padding:50px;">
-            <h2>✅ 抓取完成！</h2>
-            <p>共抓取 {len(articles)} 条新闻</p >
-            <a href="/" style="color:#2980b9;">← 返回首页查看</a >
-        </body></html>
-        """
+        import subprocess
+        result = subprocess.run(['python3', '/home/ppy/mysite/main.py'], capture_output=True, text=True, timeout=60)
+        if result.returncode == 0:
+            return '<html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2>✅ 抓取完成！</h2><p>最新新闻已更新</p><a href="/" style="color:#2980b9;">← 返回首页</a></body></html>'
+        else:
+            return '<html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2>❌ 抓取出错</h2><p>' + result.stderr + '</p><a href="/" style="color:#2980b9;">← 返回首页</a></body></html>'
     except Exception as e:
-        return f"""
-        <html><body style="font-family:sans-serif;text-align:center;padding:50px;">
-            <h2>❌ 抓取出错</h2>
-            <p style="color:#e74c3c;">{str(e)}</p >
-            <a href="/" style="color:#2980b9;">← 返回首页</a >
-        </body></html>
-        """
+        return '<html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2>❌ 抓取出错</h2><p>' + str(e) + '</p><a href="/" style="color:#2980b9;">← 返回首页</a></body></html>'
 
 @app.route('/api/news')
 def api_news():
     """JSON API - 供其他程序调用"""
-    conn = sqlite3.connect('finance.db')
+    conn = sqlite3.connect('/home/ppy/mysite/finance.db')
     c = conn.cursor()
-    c.execute("""SELECT title, summary, published, link, ai_summary 
-                 FROM news ORDER BY id DESC LIMIT 20""")
+    c.execute("SELECT title, summary, published, link, source FROM news ORDER BY id DESC LIMIT 20")
     rows = c.fetchall()
     conn.close()
     
     return jsonify([
-        {"title": r[0], "summary": r[1], "time": r[2], "link": r[3], "ai_summary": r[4]}
+        {"title": r[0], "summary": r[1], "time": r[2], "link": r[3], "source": r[4]}
         for r in rows
     ])
 
