@@ -226,15 +226,40 @@ def fetch_news():
 def save_to_db(articles):
     conn = sqlite3.connect('finance.db')
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS news
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  title TEXT, link TEXT, published TEXT, 
-                  summary TEXT, source TEXT, created_at TEXT)''')
+    
+    # 检查是否有 source 列，如果没有则重建表
+    c.execute("PRAGMA table_info(news)")
+    columns = [col[1] for col in c.fetchall()]
+    
+    if 'source' not in columns:
+        logging.info("检测到旧表结构，正在重建...")
+        c.execute("DROP TABLE IF EXISTS news")
+        c.execute('''CREATE TABLE news
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      title TEXT, link TEXT, published TEXT, 
+                      summary TEXT, source TEXT, created_at TEXT)''')
+    
+    # 创建订阅表
     c.execute('''CREATE TABLE IF NOT EXISTS subscribers
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   email TEXT UNIQUE,
                   subscribed_at TEXT)''')
+    
     new_count = 0
+    for art in articles:
+        try:
+            c.execute("SELECT id FROM news WHERE title=?", (art["title"],))
+            if c.fetchone():
+                continue
+            c.execute("INSERT INTO news (title, link, published, summary, source, created_at) VALUES (?,?,?,?,?,?)",
+                      (art["title"], art["link"], art["published"], art["summary"], art.get("source", "未知来源"), datetime.now().isoformat()))
+            new_count += 1
+        except Exception as e:
+            logging.error("入库出错: " + str(e))
+    conn.commit()
+    conn.close()
+    logging.info("新增 " + str(new_count) + " 条新闻")
+    return new_count
     for art in articles:
         try:
             c.execute("SELECT id FROM news WHERE title=?", (art["title"],))
