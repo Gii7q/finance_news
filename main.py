@@ -41,9 +41,9 @@ def fetch_news():
                 })
                 if len(articles) >= 10:
                     break
-        logging.info(f"抓取到 {len(articles)} 条新闻")
+        logging.info("抓取到 " + str(len(articles)) + " 条新闻")
     except Exception as e:
-        logging.error(f"抓取失败: {e}")
+        logging.error("抓取失败: " + str(e))
     return articles
 
 def save_to_db(articles):
@@ -63,10 +63,10 @@ def save_to_db(articles):
                       (art["title"], art["link"], art["published"], art["summary"], datetime.now().isoformat()))
             new_count += 1
         except Exception as e:
-            logging.error(f"入库出错: {e}")
+            logging.error("入库出错: " + str(e))
     conn.commit()
     conn.close()
-    logging.info(f"新增 {new_count} 条新闻")
+    logging.info("新增 " + str(new_count) + " 条新闻")
     return new_count
 
 def send_email(articles):
@@ -76,31 +76,30 @@ def send_email(articles):
     
     try:
         today = datetime.now().strftime("%Y-%m-%d")
-        html = f"<h2>📈 今日金融新闻简报 - {today}</h2><p>共 {len(articles)} 条新新闻</p ><hr>"
+        html = "<h2>📈 今日金融新闻简报 - " + today + "</h2>"
+        html += "<p>共 " + str(len(articles)) + " 条新新闻</p ><hr>"
         
         for idx, art in enumerate(articles[:10], 1):
-            html += f"""
-            <div style="margin-bottom:15px; padding:10px; border-left: 3px solid #2980b9;">
-                <h3 style="margin:0 0 5px 0;">{idx}. <a href=" 'link']}" style="color:#2980b9;">{art['title']}</a ></h3>
-                <p style="color:#555; margin:5px 0;">{art['summary']}</p >
-                <small style="color:#888;">{art['published']}</small>
-            </div>
-            <hr>
-            """
+            html += '<div style="margin-bottom:15px; padding:10px; border-left: 3px solid #2980b9;">'
+            html += '<h3 style="margin:0 0 5px 0;">' + str(idx) + '. <a href="' + art['link'] + '" style="color:#2980b9;">' + art['title'] + '</a ></h3>'
+            html += '<p style="color:#555; margin:5px 0;">' + art['summary'] + '</p >'
+            html += '<small style="color:#888;">' + art['published'] + '</small>'
+            html += '</div><hr>'
+        
         html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p >"
         
         msg = MIMEMultipart()
         msg['From'] = SENDER_EMAIL
         msg['To'] = RECEIVER_EMAIL
-        msg['Subject'] = f"📈 金融新闻简报 {today}"
+        msg['Subject'] = "📈 金融新闻简报 " + today
         msg.attach(MIMEText(html, 'html', 'utf-8'))
         
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
-        logging.info(f"邮件发送成功！共 {len(articles)} 条新闻")
+        logging.info("邮件发送成功！共 " + str(len(articles)) + " 条新闻")
     except Exception as e:
-        logging.error(f"邮件发送失败: {e}")
+        logging.error("邮件发送失败: " + str(e))
 
 if __name__ == "__main__":
     logging.info("开始执行...")
