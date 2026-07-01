@@ -10,7 +10,6 @@ from bs4 import BeautifulSoup
 
 logging.basicConfig(level=logging.INFO)
 
-# 从环境变量读取邮箱配置（GitHub Secrets）
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
@@ -71,13 +70,11 @@ def save_to_db(articles):
     return new_count
 
 def send_email(articles):
-    """发送邮件简报"""
     if not articles:
         logging.info("没有新新闻，跳过邮件发送")
         return
     
     try:
-        # 构建邮件内容
         today = datetime.now().strftime("%Y-%m-%d")
         html = f"<h2>📈 今日金融新闻简报 - {today}</h2><p>共 {len(articles)} 条新新闻</p ><hr>"
         
@@ -90,9 +87,8 @@ def send_email(articles):
             </div>
             <hr>
             """
-        html += "<p style='color:gray;'>⚠️ 本简报由AI自动生成，仅供参考，不构成投资建议。</p >"
+        html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p >"
         
-        # 发送邮件
         msg = MIMEMultipart()
         msg['From'] = SENDER_EMAIL
         msg['To'] = RECEIVER_EMAIL
@@ -102,7 +98,7 @@ def send_email(articles):
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
-        logging.info(f"✅ 邮件发送成功！共 {len(articles)} 条新闻")
+        logging.info(f"邮件发送成功！共 {len(articles)} 条新闻")
     except Exception as e:
         logging.error(f"邮件发送失败: {e}")
 
