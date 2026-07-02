@@ -280,7 +280,7 @@ def fetch_tencent_news(headers):
         logger.error("腾讯财经抓取失败: " + str(e))
     return articles
 
-# ===== 网易财经（过滤网易号/自媒体） =====
+# ===== 网易财经（过滤网易号、评论页、非财经内容） =====
 def fetch_163_news(headers):
     articles = []
     try:
@@ -289,6 +289,32 @@ def fetch_163_news(headers):
         response = requests.get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 财经关键词白名单
+        finance_keywords = [
+            'A股', '涨停', '跌停', '央行', '利率', '股市', '基金', '债券', 
+            '黄金', '原油', '财报', '营收', '净利润', 'IPO', '估值', 
+            '市盈率', '市值', '证券', '银行', '保险', '信托', '资管',
+            '人民币', '美元', '汇率', '通货膨胀', '通货紧缩', '加息', '降息',
+            '科创板', '创业板', '北交所', '主板', '退市', '分红', '回购',
+            '增持', '减持', '北向资金', '主力资金', '成交量', '大盘',
+            '期货', '现货', '大宗商品', '铁矿石', '铜', '铝', '锌',
+            '房地产', '房贷', 'LPR', 'MLF', '逆回购', '公开市场'
+        ]
+        # 非财经关键词黑名单（包含这些词的直接跳过）
+        non_finance_keywords = [
+            '皇帝', '太监', '扶弟', '皇上', '后宫', '娘娘', '妃子', 
+            '古装', '宫廷', '驸马', '皇子', '公主', '太监', '宦官',
+            '将军', '士兵', '打仗', '战役', '坦克', '大炮', '步兵',
+            '明星', '八卦', '娱乐', '综艺', '演员', '歌手', '导演',
+            '枪战', '警匪', '黑帮', '黑社会', '道上的兄弟', '混黑道',
+            '婚外情', '小三', '离婚', '出轨', '私生子', '婆媳', '女婿',
+            '看病', '医院', '医生', '护士', '药方', '中医', '养生',
+            '汽车测评', '手机测评', '笔记本测评', '数码', '智能家居',
+            '装修', '家居', '家具', '电器', '冰箱', '洗衣机', '空调',
+            '教育', '学校', '老师', '学生', '高考', '中考', '考研',
+            '美食', '探店', '做菜', '餐馆', '米其林', '吃货', '饮料'
+        ]
         
         for link_tag in soup.find_all('a', href=True):
             if len(articles) >= 10:
@@ -299,42 +325,47 @@ def fetch_163_news(headers):
             if not href or not title or len(title) < 8:
                 continue
             
-            # ===== 过滤规则 =====
-            # 1. 过滤网易号（dy 目录）
+            # ===== 过滤规则1: 网易号 =====
             if '/dy/' in href or 'dy.163.com' in href:
                 logger.debug(f"跳过网易号: {title[:20]}...")
                 continue
             
-            # 2. 过滤非财经关键词
-            finance_keywords = ['A股', '涨停', '跌停', '央行', '利率', '股市', '基金', '债券', '黄金', '原油', '财报', '营收', '净利润', 'IPO', '估值', '市盈率', '市值', '证券', '银行', '保险', '信托', '资管', '人民币', '美元', '汇率']
-            has_finance = any(kw in title for kw in finance_keywords)
-            # 如果有明显的非财经词，过滤
-            non_finance = ['皇帝', '太监', '扶弟', '皇上', '后宫', '娘娘', '妃子', '古装', '宫廷', '驸马', '皇子', '公主']
-            has_non_finance = any(kw in title for kw in non_finance)
+            # ===== 过滤规则2: 评论/跟帖页面 =====
+            if 'comment.tie.163.com' in href or '/tie/' in href:
+                logger.debug(f"跳过评论页: {title[:20]}...")
+                continue
             
+            # ===== 过滤规则3: 非财经内容（黑白名单组合） =====
+            has_finance = any(kw in title for kw in finance_keywords)
+            has_non_finance = any(kw in title for kw in non_finance_keywords)
             if has_non_finance and not has_finance:
                 logger.debug(f"跳过非财经内容: {title[:20]}...")
                 continue
             
-            if href and ('.html' in href or '.shtml' in href):
-                if href.startswith('/'):
-                    full_link = 'https://money.163.com' + href
-                elif href.startswith('//'):
-                    full_link = 'https:' + href
-                else:
-                    full_link = href
-                
-                if 'video' not in full_link:
-                    summary = fetch_article_summary(full_link, headers)
-                    if not summary:
-                        summary = "来源: 网易财经"
-                    articles.append({
-                        "title": title[:100],
-                        "link": full_link,
-                        "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "summary": summary,
-                        "source": "网易财经"
-                    })
+            # ===== 过滤规则4: 无效链接格式 =====
+            if not ('.html' in href or '.shtml' in href):
+                continue
+            
+            # ===== 处理有效链接 =====
+            if href.startswith('/'):
+                full_link = 'https://money.163.com' + href
+            elif href.startswith('//'):
+                full_link = 'https:' + href
+            else:
+                full_link = href
+            
+            if 'video' not in full_link:
+                summary = fetch_article_summary(full_link, headers)
+                if not summary:
+                    summary = "来源: 网易财经"
+                articles.append({
+                    "title": title[:100],
+                    "link": full_link,
+                    "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": summary,
+                    "source": "网易财经"
+                })
+        
         logger.info("网易财经抓取到 " + str(len(articles)) + " 条")
     except Exception as e:
         logger.error("网易财经抓取失败: " + str(e))
