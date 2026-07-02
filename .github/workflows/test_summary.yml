@@ -16,6 +16,11 @@ jobs:
       - name: 安装依赖
         run: pip install requests beautifulsoup4 lxml
       
+      - name: 抓取最新新闻
+        env:
+          API_SECRET: ${{ secrets.API_SECRET }}
+        run: python main.py
+      
       - name: 运行测试
         env:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
