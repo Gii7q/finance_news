@@ -328,36 +328,34 @@ def send_email(to_email, content):
         logger.error(f"❌ 发送到 {to_email} 失败：{str(e)}")
         return False
 
-# 11. 主函数（按时间分组发送）
+# 11. 主函数（按时间分组发送，从数据库读取当天所有新闻）
 def main():
     logger.info("开始执行...")
     
-    # 抓取新闻
+    # ===== 第一步：抓取新新闻（补充最新数据） =====
     articles = fetch_news()
-    if not articles:
-        logger.warning("未抓取到新闻")
+    if articles:
+        push_news_to_api(articles)
+        logger.info(f"✅ 抓取到 {len(articles)} 条新新闻并推送")
+    else:
+        logger.warning("⚠️ 本次未抓取到新新闻，将使用已有数据")
+    
+    # ===== 第二步：从数据库获取当天所有新闻 =====
+    email_content = generate_email_content_from_db()
+    if not email_content or "暂无" in email_content:
+        logger.warning("⚠️ 今日无新闻，跳过发送")
         return
     
-    # 推送到网站
-    push_news_to_api(articles)
-    
-    # 生成邮件内容（所有用户共用）
-    email_content = generate_email_content(articles)
-    if not email_content:
-        logger.error("生成邮件内容失败")
-        return
-    
-    # 按时间分组获取订阅者
+    # ===== 第三步：按时间分组获取订阅者 =====
     groups = get_subscribers_by_time()
     if not groups:
         logger.warning("无订阅用户，跳过发送")
         return
     
-    # 获取当前时间（UTC）
+    # ===== 第四步：按时间匹配发送 =====
     now = datetime.now().strftime("%H:%M")
     logger.info(f"⏰ 当前时间 (UTC): {now}")
     
-    # 发送匹配当前时间段的用户（允许前后10分钟误差）
     total_sent = 0
     total_failed = 0
     now_minutes = int(now.replace(':', ''))
@@ -375,6 +373,5 @@ def main():
     
     logger.info(f"📧 发送完成！成功 {total_sent} 人，失败 {total_failed} 人")
     logger.info("执行完成")
-
 if __name__ == "__main__":
     main()
