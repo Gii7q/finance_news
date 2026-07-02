@@ -16,16 +16,26 @@ jobs:
       - name: 安装依赖
         run: pip install requests beautifulsoup4 lxml
       
-      - name: 抓取最新新闻（带调试）
+      # 👇 新增：在抓取之前修复数据库
+      - name: 修复数据库表结构
+        run: |
+          if [ -f "finance.db" ]; then
+            sqlite3 finance.db "ALTER TABLE news ADD COLUMN source TEXT;" 2>/dev/null || echo "source 列已存在"
+            sqlite3 finance.db "ALTER TABLE news ADD COLUMN ai_summary TEXT;" 2>/dev/null || echo "ai_summary 列已存在"
+            echo "✅ 数据库表结构已修复"
+          fi
+      
+      - name: 抓取最新新闻
         run: |
           echo "========== 开始抓取 =========="
           python main.py
           echo "========== 抓取完成 =========="
           echo "--- 检查数据库 ---"
           sqlite3 finance.db "SELECT COUNT(*) FROM news;"
-          sqlite3 finance.db "SELECT title, created_at FROM news ORDER BY id DESC LIMIT 5;"
         env:
           API_SECRET: ${{ secrets.API_SECRET }}
+      
+      # ... 后续步骤
       
       - name: 查看今日汇总
         run: |
