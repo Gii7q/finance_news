@@ -35,6 +35,8 @@ jobs:
           echo "========== 抓取完成 =========="
           echo "--- 检查数据库 ---"
           sqlite3 finance.db "SELECT COUNT(*) FROM news;"
+          echo "--- 新闻日期分布 ---"
+          sqlite3 finance.db "SELECT substr(created_at, 1, 10) as date, COUNT(*) FROM news GROUP BY date ORDER BY date DESC;"
         env:
           API_SECRET: ${{ secrets.API_SECRET }}
       
@@ -67,7 +69,21 @@ jobs:
 
           conn = sqlite3.connect('finance.db')
           c = conn.cursor()
-          c.execute('SELECT title, link, published, summary FROM news ORDER BY id DESC LIMIT 30')
+
+          # 获取数据库中最新新闻的日期
+          c.execute('SELECT substr(created_at, 1, 10) FROM news ORDER BY id DESC LIMIT 1')
+          latest_date_row = c.fetchone()
+          beijing_now = datetime.utcnow() + timedelta(hours=8)
+
+          if latest_date_row:
+              latest_date = latest_date_row[0]
+          else:
+              latest_date = beijing_now.strftime('%Y-%m-%d')
+
+          print(f'📅 最新新闻日期: {latest_date}')
+
+          # 查询该日期的所有新闻
+          c.execute('SELECT title, link, published, summary FROM news WHERE substr(created_at, 1, 10) = ? ORDER BY id DESC', (latest_date,))
           rows = c.fetchall()
           conn.close()
 
@@ -77,10 +93,9 @@ jobs:
 
           print(f'✅ 找到 {len(rows)} 条新闻')
 
-          beijing_now = datetime.utcnow() + timedelta(hours=8)
-          today_str = beijing_now.strftime('%Y年%m月%d日')
-
-          html = '<h2 style="color:#1a1a2e;">📋 ' + today_str + ' 新闻汇总</h2>'
+          # 使用新闻实际日期作为标题
+          date_display = datetime.strptime(latest_date, '%Y-%m-%d').strftime('%Y年%m月%d日')
+          html = '<h2 style="color:#1a1a2e;">📋 ' + date_display + ' 新闻汇总</h2>'
           html += '<p style="color:#666;">共 ' + str(len(rows)) + ' 条新闻</p>'
           html += '<hr style="border: 1px solid #eee;">'
 
@@ -131,7 +146,7 @@ jobs:
               msg = MIMEMultipart()
               msg['From'] = SENDER_EMAIL
               msg['To'] = TEST_EMAIL
-              msg['Subject'] = Header('📋 新闻汇总 ' + beijing_now.strftime('%Y-%m-%d'), 'utf-8')
+              msg['Subject'] = Header('📋 新闻汇总 ' + latest_date, 'utf-8')
               msg.attach(MIMEText(html, 'html', 'utf-8'))
               with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
                   server.login(SENDER_EMAIL, SENDER_PASSWORD)
