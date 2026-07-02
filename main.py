@@ -280,7 +280,7 @@ def fetch_tencent_news(headers):
         logger.error("腾讯财经抓取失败: " + str(e))
     return articles
 
-# ===== 网易财经抓取 =====
+# ===== 网易财经（过滤网易号/自媒体） =====
 def fetch_163_news(headers):
     articles = []
     try:
@@ -289,16 +289,41 @@ def fetch_163_news(headers):
         response = requests.get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
+        
         for link_tag in soup.find_all('a', href=True):
+            if len(articles) >= 10:
+                break
             href = link_tag['href']
             title = link_tag.get_text().strip()
-            if title and len(title) > 10 and href and ('.html' in href or '.shtml' in href):
+            
+            if not href or not title or len(title) < 8:
+                continue
+            
+            # ===== 过滤规则 =====
+            # 1. 过滤网易号（dy 目录）
+            if '/dy/' in href or 'dy.163.com' in href:
+                logger.debug(f"跳过网易号: {title[:20]}...")
+                continue
+            
+            # 2. 过滤非财经关键词
+            finance_keywords = ['A股', '涨停', '跌停', '央行', '利率', '股市', '基金', '债券', '黄金', '原油', '财报', '营收', '净利润', 'IPO', '估值', '市盈率', '市值', '证券', '银行', '保险', '信托', '资管', '人民币', '美元', '汇率']
+            has_finance = any(kw in title for kw in finance_keywords)
+            # 如果有明显的非财经词，过滤
+            non_finance = ['皇帝', '太监', '扶弟', '皇上', '后宫', '娘娘', '妃子', '古装', '宫廷', '驸马', '皇子', '公主']
+            has_non_finance = any(kw in title for kw in non_finance)
+            
+            if has_non_finance and not has_finance:
+                logger.debug(f"跳过非财经内容: {title[:20]}...")
+                continue
+            
+            if href and ('.html' in href or '.shtml' in href):
                 if href.startswith('/'):
                     full_link = 'https://money.163.com' + href
                 elif href.startswith('//'):
                     full_link = 'https:' + href
                 else:
                     full_link = href
+                
                 if 'video' not in full_link:
                     summary = fetch_article_summary(full_link, headers)
                     if not summary:
@@ -310,8 +335,6 @@ def fetch_163_news(headers):
                         "summary": summary,
                         "source": "网易财经"
                     })
-                    if len(articles) >= 10:
-                        break
         logger.info("网易财经抓取到 " + str(len(articles)) + " 条")
     except Exception as e:
         logger.error("网易财经抓取失败: " + str(e))
