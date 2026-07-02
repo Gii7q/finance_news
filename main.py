@@ -520,6 +520,65 @@ def fetch_cls_news(headers):
         logger.error("财联社抓取失败: " + str(e))
     return articles
 
+# ===== Yahoo Finance（美股/国际财经新闻） =====
+def fetch_yahoo_news(headers):
+    articles = []
+    try:
+        import yfinance as yf
+        logger.info("抓取 Yahoo Finance 新闻...")
+        
+        # 热门股票代码（覆盖不同行业）
+        symbols = [
+            "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", 
+            "JPM", "BAC", "V", "JNJ", "PFE", "UNH", "PG", "WMT",
+            "SPY", "QQQ", "DIA",  # 指数ETF
+            "BTC-USD", "ETH-USD",  # 加密货币
+            "GC=F", "CL=F"  # 黄金、原油期货
+        ]
+        
+        for symbol in symbols[:10]:  # 限制数量避免请求过多
+            try:
+                ticker = yf.Ticker(symbol)
+                news = ticker.news
+                if news:
+                    for item in news[:3]:  # 每个股票最多取3条
+                        title = item.get("title", "")
+                        if not title or len(title) < 5:
+                            continue
+                        link = item.get("link", "")
+                        # 处理时间戳
+                        pub_time = item.get("providerPublishTime", datetime.now().timestamp())
+                        if isinstance(pub_time, (int, float)):
+                            pub_time = datetime.fromtimestamp(pub_time).strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            pub_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        summary = item.get("summary", item.get("description", ""))
+                        if not summary or len(summary) < 10:
+                            summary = f"来源: Yahoo Finance ({symbol})"
+                        
+                        articles.append({
+                            "title": title[:100],
+                            "link": link,
+                            "published": pub_time,
+                            "summary": summary[:200],
+                            "source": f"Yahoo Finance ({symbol})"
+                        })
+                        if len(articles) >= 30:
+                            break
+                if len(articles) >= 30:
+                    break
+            except Exception as e:
+                logger.warning(f"获取 {symbol} 新闻失败: {e}")
+                continue
+                
+        logger.info(f"Yahoo Finance 抓取到 {len(articles)} 条")
+    except ImportError:
+        logger.warning("yfinance 未安装，请运行: pip install yfinance")
+    except Exception as e:
+        logger.error(f"Yahoo Finance 抓取失败: {e}")
+    return articles
+
 # ===== 主抓取函数 =====
 def fetch_news():
     logger.info("正在从多个财经网站抓取新闻...")
