@@ -3,18 +3,18 @@ import sqlite3
 import smtplib
 import os
 import logging
+import re
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
-import re
 from bs4 import BeautifulSoup
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ==================== 配置项 ====================
-API_SECRET = os.getenv("API_SECRET")
+API_SECRET = os.getenv("API_SECRET", "FinanceNews20260702ABC123")
 API_URL = f"https://ppy.pythonanywhere.com/api/subscribers?secret={API_SECRET}"
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
@@ -44,9 +44,7 @@ def fetch_article_summary(url, headers):
         response = requests.get(url, headers=headers, timeout=8)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
-        
         article_body = soup.find('div', {'class': 'article'}) or soup.find('div', {'id': 'article'}) or soup.find('div', class_=re.compile(r'content|article|body'))
-        
         if article_body:
             paragraphs = article_body.find_all('p')
             text_parts = []
@@ -56,7 +54,6 @@ def fetch_article_summary(url, headers):
                     text_parts.append(text)
             if text_parts:
                 return ' '.join(text_parts)[:200]
-        
         texts = soup.find_all('p')
         for p in texts[:5]:
             text = p.get_text().strip()
@@ -75,7 +72,6 @@ def fetch_sina_news(headers):
         response = requests.get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
-        
         for link_tag in soup.find_all('a', href=True):
             href = link_tag['href']
             title = link_tag.get_text().strip()
@@ -86,14 +82,11 @@ def fetch_sina_news(headers):
                     full_link = 'https:' + href
                 else:
                     full_link = href
-                
                 if any(keyword in full_link for keyword in ['video', 'topic', 'slide']):
                     continue
-                
                 summary = fetch_article_summary(full_link, headers)
                 if not summary:
                     summary = "来源: 新浪财经"
-                
                 articles.append({
                     "title": title[:100],
                     "link": full_link,
@@ -117,7 +110,6 @@ def fetch_eastmoney_news(headers):
         response = requests.get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
-        
         for link_tag in soup.find_all('a', href=True):
             href = link_tag['href']
             title = link_tag.get_text().strip()
@@ -128,12 +120,10 @@ def fetch_eastmoney_news(headers):
                     full_link = 'https:' + href
                 else:
                     full_link = href
-                
                 if 'news' in full_link or 'stock' in full_link:
                     summary = fetch_article_summary(full_link, headers)
                     if not summary:
                         summary = "来源: 东方财富"
-                    
                     articles.append({
                         "title": title[:100],
                         "link": full_link,
@@ -157,7 +147,6 @@ def fetch_tencent_news(headers):
         response = requests.get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
-        
         for link_tag in soup.find_all('a', href=True):
             href = link_tag['href']
             title = link_tag.get_text().strip()
@@ -168,12 +157,10 @@ def fetch_tencent_news(headers):
                     full_link = 'https:' + href
                 else:
                     full_link = href
-                
                 if 'video' not in full_link:
                     summary = fetch_article_summary(full_link, headers)
                     if not summary:
                         summary = "来源: 腾讯财经"
-                    
                     articles.append({
                         "title": title[:100],
                         "link": full_link,
@@ -197,7 +184,6 @@ def fetch_163_news(headers):
         response = requests.get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
-        
         for link_tag in soup.find_all('a', href=True):
             href = link_tag['href']
             title = link_tag.get_text().strip()
@@ -208,12 +194,10 @@ def fetch_163_news(headers):
                     full_link = 'https:' + href
                 else:
                     full_link = href
-                
                 if 'video' not in full_link:
                     summary = fetch_article_summary(full_link, headers)
                     if not summary:
                         summary = "来源: 网易财经"
-                    
                     articles.append({
                         "title": title[:100],
                         "link": full_link,
@@ -233,18 +217,10 @@ def fetch_news():
     logger.info("正在从多个财经网站抓取新闻...")
     all_articles = []
     seen_titles = set()
-    
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
-    
-    sources = [
-        fetch_sina_news,
-        fetch_eastmoney_news,
-        fetch_tencent_news,
-        fetch_163_news
-    ]
-    
+    sources = [fetch_sina_news, fetch_eastmoney_news, fetch_tencent_news, fetch_163_news]
     for fetch_func in sources:
         try:
             articles = fetch_func(headers)
@@ -254,28 +230,40 @@ def fetch_news():
                     all_articles.append(art)
         except Exception as e:
             logger.error("来源抓取出错: " + str(e))
-    
-    # 备用数据
     if len(all_articles) < 3:
         logger.info("抓取数量不足，使用备用数据")
         all_articles = [
             {"title": "A股三大指数震荡整理，沪指微涨", "link": "https://finance.sina.com.cn", "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "summary": "市场整体平稳，成交量有所萎缩", "source": "新浪财经"},
             {"title": "央行开展逆回购操作维护流动性", "link": "https://finance.sina.com.cn", "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "summary": "公开市场操作保持合理充裕", "source": "新浪财经"},
         ]
-    
     logger.info("总共抓取到 " + str(len(all_articles)) + " 条新闻")
     return all_articles
 
-# 8. 生成邮件内容（你喜欢的样式）
+# 8. 推送新闻到 PythonAnywhere（新增）
+def push_news_to_api(articles):
+    """把新闻推送到 PythonAnywhere"""
+    try:
+        api_url = f"https://ppy.pythonanywhere.com/api/news?secret={API_SECRET}"
+        response = requests.post(api_url, json={"news": articles}, timeout=30)
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"✅ 推送新闻到网站成功，新增 {result.get('new_count', 0)} 条")
+            return True
+        else:
+            logger.error(f"推送新闻失败: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        logger.error(f"推送新闻异常: {e}")
+        return False
+
+# 9. 生成邮件内容
 def generate_email_content(articles):
     if not articles:
         return "<h3>今日暂无财经新闻</h3>"
-    
     try:
         today = datetime.now().strftime("%Y-%m-%d")
         html = "<h2>📈 今日金融新闻简报 - " + today + "</h2>"
         html += "<p>共 " + str(len(articles)) + " 条新闻</p><hr>"
-        
         for idx, art in enumerate(articles[:15], 1):
             source_tag = art.get("source", "未知来源")
             html += '<div style="margin-bottom:15px; padding:10px; border-left: 3px solid #2980b9;">'
@@ -285,39 +273,34 @@ def generate_email_content(articles):
                 html += '<p style="color:#555; margin:8px 0; font-size:14px;">📌 ' + art['summary'] + '</p>'
             html += '<small style="color:#888;">🕐 ' + art['published'] + ' | 🔗 <a href="' + art['link'] + '" style="color:#2980b9;">查看原文</a></small>'
             html += '</div><hr>'
-        
         html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p>"
         html += "<p style='color:#888; font-size:12px;'>📧 如需取消订阅，请访问网站操作</p>"
-        
         return html
     except Exception as e:
         logger.error("生成邮件内容失败: " + str(e))
         return "<h3>生成邮件内容失败</h3>"
 
-# 9. 发送邮件
+# 10. 发送邮件
 def send_email(to_email, content):
     if not SENDER_EMAIL or not SENDER_PASSWORD:
         logger.error("发件人邮箱/授权码未配置")
         return False
-    
     try:
         msg = MIMEMultipart()
         msg['From'] = SENDER_EMAIL
         msg['To'] = to_email
         msg['Subject'] = Header("📈 金融新闻简报 " + datetime.now().strftime("%Y-%m-%d"), 'utf-8')
         msg.attach(MIMEText(content, 'html', 'utf-8'))
-        
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, [to_email], msg.as_string())
-        
         logger.info(f"✅ 发送到 {to_email} 成功")
         return True
     except Exception as e:
         logger.error(f"❌ 发送到 {to_email} 失败：{str(e)}")
         return False
 
-# 10. 主函数
+# 11. 主函数
 def main():
     logger.info("开始执行...")
     
@@ -326,6 +309,9 @@ def main():
     if not articles:
         logger.warning("未抓取到新闻")
         return
+    
+    # ✅ 推送新闻到 PythonAnywhere（新增）
+    push_news_to_api(articles)
     
     # 获取订阅用户
     subscribers = fetch_subscribers_from_api()
@@ -350,19 +336,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-# 在 main.py 末尾添加
-def push_news_to_api(articles):
-    """把新闻推送到 PythonAnywhere"""
-    import requests
-    API_SECRET = "FinanceNews20260702ABC123"
-    API_URL = f"https://ppy.pythonanywhere.com/api/news?secret={API_SECRET}"
-    
-    try:
-        response = requests.post(API_URL, json={"news": articles}, timeout=30)
-        if response.status_code == 200:
-            result = response.json()
-            logger.info(f"✅ 推送新闻到网站成功，新增 {result.get('new_count', 0)} 条")
-        else:
-            logger.error(f"推送新闻失败: {response.status_code}")
-    except Exception as e:
-        logger.error(f"推送新闻异常: {e}")
