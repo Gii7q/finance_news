@@ -42,6 +42,8 @@ jobs:
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           # main.py 会从数据库读取所有订阅者，不再需要 RECEIVER_EMAIL
+          # 新增网站接口密钥
+          API_SECRET: ${{ secrets.API_SECRET }}
       
       # 5. 上传数据库到 PythonAnywhere
       - name: 上传数据库到 PythonAnywhere
