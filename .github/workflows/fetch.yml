@@ -36,19 +36,13 @@ jobs:
           echo "新闻总数: $(sqlite3 finance.db 'SELECT COUNT(*) FROM news;')"
           echo "订阅者总数: $(sqlite3 finance.db 'SELECT COUNT(*) FROM subscribers;')"
         env:
-          # 这些环境变量会被 main.py 读取
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          # main.py 会从数据库读取所有订阅者，不再需要 RECEIVER_EMAIL
-          # 新增网站接口密钥
           API_SECRET: ${{ secrets.API_SECRET }}
       
-      # 5. 上传数据库到 PythonAnywhere
-    
-      
-      # 6. 重载 PythonAnywhere 网站
+      # 5. 重载 PythonAnywhere 网站（确保新数据生效）
       - name: 重载网站
         env:
           PA_USERNAME: ${{ secrets.PYTHONANYWHERE_USERNAME }}
@@ -60,7 +54,7 @@ jobs:
             https://www.pythonanywhere.com/api/v0/user/${PA_USERNAME}/webapps/ppy.pythonanywhere.com/reload/
           echo "✅ 网站已重载"
       
-      # 7. 备份数据库 (作为 Actions 的 Artifact)
+      # 6. 备份数据库 (保留现场，方便排查)
       - name: 备份数据库
         uses: actions/upload-artifact@v4
         with:
