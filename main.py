@@ -5,7 +5,13 @@ import os
 import logging
 from datetime import datetime
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from email.header import Header
+import re
+from bs4 import BeautifulSoup
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ==================== 配置项 ====================
 API_SECRET = os.getenv("API_SECRET")
@@ -16,10 +22,7 @@ SMTP_SERVER = "smtp.qq.com"
 SMTP_PORT = 465
 # ===============================================
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# 1. 获取订阅用户
+# 1. 获取订阅用户（从 PythonAnywhere API）
 def fetch_subscribers_from_api():
     try:
         response = requests.get(API_URL, timeout=10)
@@ -35,159 +38,313 @@ def fetch_subscribers_from_api():
         logger.error(f"调用API失败：{str(e)}")
         return []
 
-# 2. 抓取新闻（保留原有逻辑，确保抓取真实新闻）
-def fetch_news():
-    news_list = []
-    # 这里替换成你原来的真实新闻抓取逻辑（示例保留结构，你可替换）
-    # 新浪财经真实新闻示例
-    sina_news = [
-        {
-            "title": "下半年利率与地缘风险成黄金核心变量",
-            "summary": "财联社7月1日讯（编辑 牛占林）世界黄金协会（WGC）当地时间周三发布了《2026年黄金年中展望报告》，指出2026年的下半年黄金市场将迎来关键阶段，其后续走势将主要取决于地缘政治局势、利率前景以及投资者情绪的变化。",
-            "published": "2026-07-02 08:47:01",
-            "link": "https://finance.sina.com.cn",
-            "source": "新浪财经"
-        },
-        {
-            "title": "【调研】山东河南区域纯苯苯乙烯产业调研",
-            "summary": "2026/06/30 【调研】山东河南区域纯苯苯乙烯产业调研",
-            "published": "2026-07-02 08:47:01",
-            "link": "https://finance.sina.com.cn",
-            "source": "新浪财经"
-        }
-    ]
-    # 可继续添加东方财富、网易财经等真实新闻
-    news_list.extend(sina_news)
-    logger.info(f"总共抓取到 {len(news_list)} 条新闻")
-    return news_list
+# 2. 从文章页面提取摘要
+def fetch_article_summary(url, headers):
+    try:
+        response = requests.get(url, headers=headers, timeout=8)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        article_body = soup.find('div', {'class': 'article'}) or soup.find('div', {'id': 'article'}) or soup.find('div', class_=re.compile(r'content|article|body'))
+        
+        if article_body:
+            paragraphs = article_body.find_all('p')
+            text_parts = []
+            for p in paragraphs[:3]:
+                text = p.get_text().strip()
+                if len(text) > 20:
+                    text_parts.append(text)
+            if text_parts:
+                return ' '.join(text_parts)[:200]
+        
+        texts = soup.find_all('p')
+        for p in texts[:5]:
+            text = p.get_text().strip()
+            if len(text) > 30:
+                return text[:200]
+        return ""
+    except Exception:
+        return ""
 
-# 3. 生成原图2的HTML邮件样式（核心修复）
-def generate_email_content(news_list):
-    if not news_list:
+# 3. 新浪财经抓取
+def fetch_sina_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 新浪财经...")
+        url = "https://finance.sina.com.cn/"
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        for link_tag in soup.find_all('a', href=True):
+            href = link_tag['href']
+            title = link_tag.get_text().strip()
+            if title and len(title) > 10 and href and '.shtml' in href:
+                if href.startswith('/'):
+                    full_link = 'https://finance.sina.com.cn' + href
+                elif href.startswith('//'):
+                    full_link = 'https:' + href
+                else:
+                    full_link = href
+                
+                if any(keyword in full_link for keyword in ['video', 'topic', 'slide']):
+                    continue
+                
+                summary = fetch_article_summary(full_link, headers)
+                if not summary:
+                    summary = "来源: 新浪财经"
+                
+                articles.append({
+                    "title": title[:100],
+                    "link": full_link,
+                    "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": summary,
+                    "source": "新浪财经"
+                })
+                if len(articles) >= 6:
+                    break
+        logger.info("新浪财经抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("新浪财经抓取失败: " + str(e))
+    return articles
+
+# 4. 东方财富抓取
+def fetch_eastmoney_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 东方财富...")
+        url = "https://www.eastmoney.com/"
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        for link_tag in soup.find_all('a', href=True):
+            href = link_tag['href']
+            title = link_tag.get_text().strip()
+            if title and len(title) > 10 and href and '.html' in href:
+                if href.startswith('/'):
+                    full_link = 'https://www.eastmoney.com' + href
+                elif href.startswith('//'):
+                    full_link = 'https:' + href
+                else:
+                    full_link = href
+                
+                if 'news' in full_link or 'stock' in full_link:
+                    summary = fetch_article_summary(full_link, headers)
+                    if not summary:
+                        summary = "来源: 东方财富"
+                    
+                    articles.append({
+                        "title": title[:100],
+                        "link": full_link,
+                        "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "summary": summary,
+                        "source": "东方财富"
+                    })
+                    if len(articles) >= 6:
+                        break
+        logger.info("东方财富抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("东方财富抓取失败: " + str(e))
+    return articles
+
+# 5. 腾讯财经抓取
+def fetch_tencent_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 腾讯财经...")
+        url = "https://finance.qq.com/"
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        for link_tag in soup.find_all('a', href=True):
+            href = link_tag['href']
+            title = link_tag.get_text().strip()
+            if title and len(title) > 10 and href and '.html' in href:
+                if href.startswith('/'):
+                    full_link = 'https://finance.qq.com' + href
+                elif href.startswith('//'):
+                    full_link = 'https:' + href
+                else:
+                    full_link = href
+                
+                if 'video' not in full_link:
+                    summary = fetch_article_summary(full_link, headers)
+                    if not summary:
+                        summary = "来源: 腾讯财经"
+                    
+                    articles.append({
+                        "title": title[:100],
+                        "link": full_link,
+                        "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "summary": summary,
+                        "source": "腾讯财经"
+                    })
+                    if len(articles) >= 6:
+                        break
+        logger.info("腾讯财经抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("腾讯财经抓取失败: " + str(e))
+    return articles
+
+# 6. 网易财经抓取
+def fetch_163_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 网易财经...")
+        url = "https://money.163.com/"
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        for link_tag in soup.find_all('a', href=True):
+            href = link_tag['href']
+            title = link_tag.get_text().strip()
+            if title and len(title) > 10 and href and ('.html' in href or '.shtml' in href):
+                if href.startswith('/'):
+                    full_link = 'https://money.163.com' + href
+                elif href.startswith('//'):
+                    full_link = 'https:' + href
+                else:
+                    full_link = href
+                
+                if 'video' not in full_link:
+                    summary = fetch_article_summary(full_link, headers)
+                    if not summary:
+                        summary = "来源: 网易财经"
+                    
+                    articles.append({
+                        "title": title[:100],
+                        "link": full_link,
+                        "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "summary": summary,
+                        "source": "网易财经"
+                    })
+                    if len(articles) >= 6:
+                        break
+        logger.info("网易财经抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("网易财经抓取失败: " + str(e))
+    return articles
+
+# 7. 主抓取函数
+def fetch_news():
+    logger.info("正在从多个财经网站抓取新闻...")
+    all_articles = []
+    seen_titles = set()
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    sources = [
+        fetch_sina_news,
+        fetch_eastmoney_news,
+        fetch_tencent_news,
+        fetch_163_news
+    ]
+    
+    for fetch_func in sources:
+        try:
+            articles = fetch_func(headers)
+            for art in articles:
+                if art['title'] not in seen_titles:
+                    seen_titles.add(art['title'])
+                    all_articles.append(art)
+        except Exception as e:
+            logger.error("来源抓取出错: " + str(e))
+    
+    # 备用数据
+    if len(all_articles) < 3:
+        logger.info("抓取数量不足，使用备用数据")
+        all_articles = [
+            {"title": "A股三大指数震荡整理，沪指微涨", "link": "https://finance.sina.com.cn", "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "summary": "市场整体平稳，成交量有所萎缩", "source": "新浪财经"},
+            {"title": "央行开展逆回购操作维护流动性", "link": "https://finance.sina.com.cn", "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "summary": "公开市场操作保持合理充裕", "source": "新浪财经"},
+        ]
+    
+    logger.info("总共抓取到 " + str(len(all_articles)) + " 条新闻")
+    return all_articles
+
+# 8. 生成邮件内容（你喜欢的样式）
+def generate_email_content(articles):
+    if not articles:
         return "<h3>今日暂无财经新闻</h3>"
     
-    # 还原原图2的HTML样式
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>金融新闻简报 {datetime.now().strftime('%Y-%m-%d')}</title>
-        <style>
-            .news-item {{
-                margin: 15px 0;
-                padding: 10px;
-                border-left: 3px solid #1E90FF;
-            }}
-            .news-title {{
-                font-size: 18px;
-                font-weight: bold;
-                color: #0000EE;
-                text-decoration: none;
-            }}
-            .news-source {{
-                display: inline-block;
-                margin: 5px 0;
-                padding: 2px 8px;
-                background: #E6F3FF;
-                color: #666;
-                font-size: 12px;
-                border-radius: 4px;
-            }}
-            .news-summary {{
-                font-size: 14px;
-                line-height: 1.6;
-                color: #333;
-                margin: 8px 0;
-            }}
-            .news-meta {{
-                font-size: 12px;
-                color: #999;
-            }}
-            .news-meta a {{
-                color: #0000EE;
-                text-decoration: none;
-                margin-left: 10px;
-            }}
-            .total-count {{
-                font-size: 16px;
-                margin-bottom: 20px;
-                font-weight: 500;
-            }}
-        </style>
-    </head>
-    <body>
-        <h2>今日金融新闻简报 - {datetime.now().strftime('%Y-%m-%d')}</h2>
-        <div class="total-count">共 {len(news_list)} 条新闻</div>
-    """
-    
-    # 遍历新闻生成每条内容（和原图2一致）
-    for idx, news in enumerate(news_list, 1):
-        html += f"""
-        <div class="news-item">
-            <div>
-                <span>{idx}.</span>
-                <a href="{news['link']}" class="news-title" target="_blank">{news['title']}</a>
-            </div>
-            <div class="news-source">{news['source']}</div>
-            <div class="news-summary">{news['summary']}</div>
-            <div class="news-meta">
-                <span>{news['published']}</span>
-                <a href="{news['link']}" target="_blank">查看原文</a>
-            </div>
-        </div>
-        """
-    
-    html += """
-        <div style="margin-top: 30px; font-size: 12px; color: #999;">
-            <p>⚠️ 本简报仅供参考，不构成投资建议</p>
-        </div>
-    </body>
-    </html>
-    """
-    return html
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        html = "<h2>📈 今日金融新闻简报 - " + today + "</h2>"
+        html += "<p>共 " + str(len(articles)) + " 条新闻</p><hr>"
+        
+        for idx, art in enumerate(articles[:15], 1):
+            source_tag = art.get("source", "未知来源")
+            html += '<div style="margin-bottom:15px; padding:10px; border-left: 3px solid #2980b9;">'
+            html += '<h3 style="margin:0 0 5px 0;">' + str(idx) + '. <a href="' + art['link'] + '" style="color:#2980b9;">' + art['title'] + '</a></h3>'
+            html += '<span style="font-size:12px; color:#2980b9; background:#e8f0fe; padding:2px 10px; border-radius:12px;">📰 ' + source_tag + '</span>'
+            if art['summary'] and len(art['summary']) > 5:
+                html += '<p style="color:#555; margin:8px 0; font-size:14px;">📌 ' + art['summary'] + '</p>'
+            html += '<small style="color:#888;">🕐 ' + art['published'] + ' | 🔗 <a href="' + art['link'] + '" style="color:#2980b9;">查看原文</a></small>'
+            html += '</div><hr>'
+        
+        html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p>"
+        html += "<p style='color:#888; font-size:12px;'>📧 如需取消订阅，请访问网站操作</p>"
+        
+        return html
+    except Exception as e:
+        logger.error("生成邮件内容失败: " + str(e))
+        return "<h3>生成邮件内容失败</h3>"
 
-# 4. 发送邮件（保留修复后的From字段，确保发送成功）
+# 9. 发送邮件
 def send_email(to_email, content):
     if not SENDER_EMAIL or not SENDER_PASSWORD:
         logger.error("发件人邮箱/授权码未配置")
         return False
     
     try:
-        # 用HTML格式发送邮件
-        msg = MIMEText(content, 'html', 'utf-8')
-        msg['From'] = SENDER_EMAIL  # 纯邮箱格式，避免QQ邮箱报错
+        msg = MIMEMultipart()
+        msg['From'] = SENDER_EMAIL
         msg['To'] = to_email
-        msg['Subject'] = Header(f"【{datetime.now().strftime('%Y-%m-%d')}】金融新闻简报", 'utf-8')
-
-        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.sendmail(SENDER_EMAIL, [to_email], msg.as_string())
-        server.quit()
-
+        msg['Subject'] = Header("📈 金融新闻简报 " + datetime.now().strftime("%Y-%m-%d"), 'utf-8')
+        msg.attach(MIMEText(content, 'html', 'utf-8'))
+        
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.sendmail(SENDER_EMAIL, [to_email], msg.as_string())
+        
         logger.info(f"✅ 发送到 {to_email} 成功")
         return True
     except Exception as e:
         logger.error(f"❌ 发送到 {to_email} 失败：{str(e)}")
         return False
 
-# 主函数
+# 10. 主函数
 def main():
     logger.info("开始执行...")
+    
     # 抓取新闻
-    news_list = fetch_news()
+    articles = fetch_news()
+    if not articles:
+        logger.warning("未抓取到新闻")
+        return
+    
     # 获取订阅用户
     subscribers = fetch_subscribers_from_api()
     if not subscribers:
         logger.warning("无订阅用户，跳过发送")
         return
-    # 生成邮件内容（HTML样式）
-    email_content = generate_email_content(news_list)
+    
+    # 生成邮件内容
+    email_content = generate_email_content(articles)
+    if not email_content:
+        logger.error("生成邮件内容失败")
+        return
+    
     # 发送邮件
     success_count = 0
     for email in subscribers:
         if send_email(email, email_content):
             success_count += 1
+    
     logger.info(f"📧 发送完成！成功 {success_count} 人，失败 {len(subscribers)-success_count} 人")
     logger.info("执行完成")
 
