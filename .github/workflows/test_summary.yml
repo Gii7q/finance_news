@@ -16,13 +16,13 @@ jobs:
       - name: 安装依赖
         run: pip install requests beautifulsoup4 lxml
       
-      # 👇 新增：在抓取之前修复数据库
       - name: 修复数据库表结构
         run: |
+          # 如果数据库存在，添加缺失的列
           if [ -f "finance.db" ]; then
             sqlite3 finance.db "ALTER TABLE news ADD COLUMN source TEXT;" 2>/dev/null || echo "source 列已存在"
             sqlite3 finance.db "ALTER TABLE news ADD COLUMN ai_summary TEXT;" 2>/dev/null || echo "ai_summary 列已存在"
-            echo "✅ 数据库表结构已修复"
+            sqlite3 finance.db "PRAGMA table_info(news);"
           fi
       
       - name: 抓取最新新闻
@@ -32,22 +32,84 @@ jobs:
           echo "========== 抓取完成 =========="
           echo "--- 检查数据库 ---"
           sqlite3 finance.db "SELECT COUNT(*) FROM news;"
+          sqlite3 finance.db "SELECT title, created_at FROM news ORDER BY id DESC LIMIT 5;"
         env:
           API_SECRET: ${{ secrets.API_SECRET }}
       
-      # ... 后续步骤
-      
-      - name: 查看今日汇总
+      - name: 创建今日汇总脚本
         run: |
-          python -c "
+          cat > test_today.py << 'EOF'
           import sqlite3
+          import smtplib
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          from email.header import Header
           from datetime import datetime, timedelta
+          import os
+
+          SENDER_EMAIL = os.getenv('SENDER_EMAIL')
+          SENDER_PASSWORD = os.getenv('SENDER_PASSWORD')
+          SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.qq.com')
+          SMTP_PORT = int(os.getenv('SMTP_PORT', 465))
+          TEST_EMAIL = '3215972859@qq.com'
+
+          if not os.path.exists('finance.db'):
+              print('❌ finance.db 不存在')
+              exit(1)
+
           conn = sqlite3.connect('finance.db')
           c = conn.cursor()
           beijing_now = datetime.utcnow() + timedelta(hours=8)
           today = beijing_now.strftime('%Y-%m-%d')
-          c.execute('SELECT COUNT(*) FROM news WHERE substr(created_at, 1, 10) = ?', (today,))
-          count = c.fetchone()[0]
-          print(f'今日新闻数: {count}')
+          c.execute('SELECT title, link, published, summary FROM news WHERE substr(created_at, 1, 10) = ? ORDER BY id DESC', (today,))
+          rows = c.fetchall()
           conn.close()
-          "
+
+          if not rows:
+              print('❌ 今日无新闻')
+              exit(1)
+
+          print(f'✅ 找到 {len(rows)} 条新闻')
+
+          today_str = beijing_now.strftime('%Y年%m月%d日')
+          html = '<h2>📋 ' + today_str + ' 今日汇总</h2>'
+          html += '<p>共 ' + str(len(rows)) + ' 条新闻</p><hr>'
+
+          html += '<h3>📑 目录</h3><ul>'
+          for idx, row in enumerate(rows, 1):
+              html += '<li><a href=\"' + row[1] + '\" style=\"color:#2980b9;\">' + row[0] + '</a> <small style=\"color:#888;\">(' + row[2] + ')</small></li>'
+          html += '</ul><hr>'
+
+          html += '<h3>📰 详细新闻</h3>'
+          for idx, row in enumerate(rows[:20], 1):
+              html += '<div style=\"margin-bottom:12px; padding:8px; border-left:2px solid #ddd;\">'
+              html += '<h4 style=\"margin:0 0 4px 0;\">' + str(idx) + '. <a href=\"' + row[1] + '\" style=\"color:#2980b9;\">' + row[0] + '</a></h4>'
+              if row[3]:
+                  html += '<p style=\"color:#555; font-size:13px; margin:4px 0;\">' + row[3][:150] + '...</p>'
+              html += '<small style=\"color:#888;\">🕐 ' + row[2] + '</small>'
+              html += '</div>'
+
+          html += '<p style=\"color:gray;\">⚠️ 本简报仅供参考，不构成投资建议。</p>'
+
+          try:
+              msg = MIMEMultipart()
+              msg['From'] = SENDER_EMAIL
+              msg['To'] = TEST_EMAIL
+              msg['Subject'] = Header('📋 今日新闻汇总 ' + beijing_now.strftime('%Y-%m-%d'), 'utf-8')
+              msg.attach(MIMEText(html, 'html', 'utf-8'))
+              with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+                  server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                  server.sendmail(SENDER_EMAIL, [TEST_EMAIL], msg.as_string())
+              print('✅ 今日汇总已发送到 ' + TEST_EMAIL)
+          except Exception as e:
+              print('❌ 发送失败:', e)
+              exit(1)
+          EOF
+      
+      - name: 运行测试
+        env:
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        run: python test_today.py
