@@ -133,7 +133,7 @@ def generate_email_content(news_list):
         <meta charset="UTF-8">
         <title>每日金融新闻简报</title>
         <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            body {font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .news-item { margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
             .news-title { font-size: 16px; font-weight: bold; color: #2980b9; }
             .news-summary { font-size: 14px; color: #666; margin: 5px 0; }
