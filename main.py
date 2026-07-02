@@ -22,21 +22,27 @@ SMTP_SERVER = "smtp.qq.com"
 SMTP_PORT = 465
 # ===============================================
 
-# 1. 获取订阅用户（从 PythonAnywhere API）
-def fetch_subscribers_from_api():
+# 1. 获取订阅用户（按时间分组）
+def get_subscribers_by_time():
+    """从 API 获取订阅者，按 send_time 分组"""
     try:
         response = requests.get(API_URL, timeout=10)
         if response.status_code == 200:
             subscribers = response.json()
-            email_list = [sub["email"] for sub in subscribers if "email" in sub]
-            logger.info(f"✅ 从线上网站获取订阅用户共 {len(email_list)} 人")
-            return email_list
+            groups = {}
+            for sub in subscribers:
+                send_time = sub.get('send_time', '08:00')
+                if send_time not in groups:
+                    groups[send_time] = []
+                groups[send_time].append(sub['email'])
+            logger.info(f"✅ 从线上网站获取订阅用户共 {len(subscribers)} 人，分布在 {len(groups)} 个时间段")
+            return groups
         else:
             logger.error(f"API返回错误：{response.status_code}")
-            return []
+            return {}
     except Exception as e:
         logger.error(f"调用API失败：{str(e)}")
-        return []
+        return {}
 
 # 2. 从文章页面提取摘要
 def fetch_article_summary(url, headers):
@@ -213,32 +219,25 @@ def fetch_163_news(headers):
     return articles
 
 # 7. 主抓取函数
-# 修改 fetch_news 函数
 def fetch_news():
     logger.info("正在从多个财经网站抓取新闻...")
     all_articles = []
-    seen_urls = set()  # 改为基于 URL 去重
+    seen_urls = set()
     seen_titles = set()
-    
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
-    
     sources = [fetch_sina_news, fetch_eastmoney_news, fetch_tencent_news, fetch_163_news]
-    
     for fetch_func in sources:
         try:
             articles = fetch_func(headers)
             for art in articles:
-                # 基于 URL 和标题双重去重
                 if art['link'] not in seen_urls and art['title'] not in seen_titles:
                     seen_urls.add(art['link'])
                     seen_titles.add(art['title'])
                     all_articles.append(art)
         except Exception as e:
             logger.error("来源抓取出错: " + str(e))
-    
-    # ... 其余代码保持不变
     if len(all_articles) < 3:
         logger.info("抓取数量不足，使用备用数据")
         all_articles = [
@@ -248,9 +247,8 @@ def fetch_news():
     logger.info("总共抓取到 " + str(len(all_articles)) + " 条新闻")
     return all_articles
 
-# 8. 推送新闻到 PythonAnywhere（新增）
+# 8. 推送新闻到 PythonAnywhere
 def push_news_to_api(articles):
-    """把新闻推送到 PythonAnywhere"""
     try:
         api_url = f"https://ppy.pythonanywhere.com/api/news?secret={API_SECRET}"
         response = requests.post(api_url, json={"news": articles}, timeout=30)
@@ -309,7 +307,7 @@ def send_email(to_email, content):
         logger.error(f"❌ 发送到 {to_email} 失败：{str(e)}")
         return False
 
-# 11. 主函数
+# 11. 主函数（按时间分组发送）
 def main():
     logger.info("开始执行...")
     
@@ -319,28 +317,42 @@ def main():
         logger.warning("未抓取到新闻")
         return
     
-    # ✅ 推送新闻到 PythonAnywhere（新增）
+    # 推送到网站
     push_news_to_api(articles)
     
-    # 获取订阅用户
-    subscribers = fetch_subscribers_from_api()
-    if not subscribers:
-        logger.warning("无订阅用户，跳过发送")
-        return
-    
-    # 生成邮件内容
+    # 生成邮件内容（所有用户共用）
     email_content = generate_email_content(articles)
     if not email_content:
         logger.error("生成邮件内容失败")
         return
     
-    # 发送邮件
-    success_count = 0
-    for email in subscribers:
-        if send_email(email, email_content):
-            success_count += 1
+    # 按时间分组获取订阅者
+    groups = get_subscribers_by_time()
+    if not groups:
+        logger.warning("无订阅用户，跳过发送")
+        return
     
-    logger.info(f"📧 发送完成！成功 {success_count} 人，失败 {len(subscribers)-success_count} 人")
+    # 获取当前时间（UTC）
+    now = datetime.now().strftime("%H:%M")
+    logger.info(f"⏰ 当前时间 (UTC): {now}")
+    
+    # 发送匹配当前时间段的用户（允许前后10分钟误差）
+    total_sent = 0
+    total_failed = 0
+    now_minutes = int(now.replace(':', ''))
+    
+    for send_time, emails in groups.items():
+        send_minutes = int(send_time.replace(':', ''))
+        # 检查当前时间是否匹配该时段（允许前后10分钟误差）
+        if abs(now_minutes - send_minutes) <= 10:
+            logger.info(f"⏰ 发送给 {send_time} 时段的 {len(emails)} 个订阅者")
+            for email in emails:
+                if send_email(email, email_content):
+                    total_sent += 1
+                else:
+                    total_failed += 1
+    
+    logger.info(f"📧 发送完成！成功 {total_sent} 人，失败 {total_failed} 人")
     logger.info("执行完成")
 
 if __name__ == "__main__":
