@@ -18,11 +18,12 @@ jobs:
       
       - name: 修复数据库表结构
         run: |
-          # 如果数据库存在，添加缺失的列
           if [ -f "finance.db" ]; then
             sqlite3 finance.db "ALTER TABLE news ADD COLUMN source TEXT;" 2>/dev/null || echo "source 列已存在"
             sqlite3 finance.db "ALTER TABLE news ADD COLUMN ai_summary TEXT;" 2>/dev/null || echo "ai_summary 列已存在"
-            sqlite3 finance.db "PRAGMA table_info(news);"
+            echo "✅ 数据库表结构已修复"
+          else
+            echo "⚠️ finance.db 不存在，跳过修复"
           fi
       
       - name: 抓取最新新闻
@@ -32,10 +33,9 @@ jobs:
           echo "========== 抓取完成 =========="
           echo "--- 检查数据库 ---"
           sqlite3 finance.db "SELECT COUNT(*) FROM news;"
-          echo "--- 最新5条新闻的日期 ---"
           sqlite3 finance.db "SELECT title, substr(created_at, 1, 10) FROM news ORDER BY id DESC LIMIT 5;"
         env:
-            API_SECRET: ${{ secrets.API_SECRET }}
+          API_SECRET: ${{ secrets.API_SECRET }}
       
       - name: 创建今日汇总脚本
         run: |
@@ -60,20 +60,19 @@ jobs:
 
           conn = sqlite3.connect('finance.db')
           c = conn.cursor()
-          beijing_now = datetime.utcnow() + timedelta(hours=8)
-          today = beijing_now.strftime('%Y-%m-%d')
-          c.execute('SELECT title, link, published, summary FROM news WHERE substr(created_at, 1, 10) = ? ORDER BY id DESC', (today,))
+          c.execute('SELECT title, link, published, summary FROM news ORDER BY id DESC LIMIT 30')
           rows = c.fetchall()
           conn.close()
 
           if not rows:
-              print('❌ 今日无新闻')
+              print('❌ 数据库中没有新闻')
               exit(1)
 
           print(f'✅ 找到 {len(rows)} 条新闻')
 
+          beijing_now = datetime.utcnow() + timedelta(hours=8)
           today_str = beijing_now.strftime('%Y年%m月%d日')
-          html = '<h2>📋 ' + today_str + ' 今日汇总</h2>'
+          html = '<h2>📋 ' + today_str + ' 最新新闻汇总</h2>'
           html += '<p>共 ' + str(len(rows)) + ' 条新闻</p><hr>'
 
           html += '<h3>📑 目录</h3><ul>'
@@ -96,12 +95,12 @@ jobs:
               msg = MIMEMultipart()
               msg['From'] = SENDER_EMAIL
               msg['To'] = TEST_EMAIL
-              msg['Subject'] = Header('📋 今日新闻汇总 ' + beijing_now.strftime('%Y-%m-%d'), 'utf-8')
+              msg['Subject'] = Header('📋 最新新闻汇总 ' + beijing_now.strftime('%Y-%m-%d'), 'utf-8')
               msg.attach(MIMEText(html, 'html', 'utf-8'))
               with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
                   server.login(SENDER_EMAIL, SENDER_PASSWORD)
                   server.sendmail(SENDER_EMAIL, [TEST_EMAIL], msg.as_string())
-              print('✅ 今日汇总已发送到 ' + TEST_EMAIL)
+              print('✅ 新闻汇总已发送到 ' + TEST_EMAIL)
           except Exception as e:
               print('❌ 发送失败:', e)
               exit(1)
