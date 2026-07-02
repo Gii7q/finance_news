@@ -22,6 +22,38 @@ SMTP_SERVER = "smtp.qq.com"
 SMTP_PORT = 465
 # ===============================================
 
+# ===== AI 概述生成（仅在每日汇总时调用） =====
+def generate_ai_summary(rows):
+    """调用 AI 生成新闻概述（仅用于每日汇总）"""
+    try:
+        import openai
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            logger.warning("DEEPSEEK_API_KEY 未配置，跳过 AI 概述")
+            return None
+        
+        titles = [row[0] for row in rows[:30]]
+        titles_text = "\n".join(titles)
+        
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com/v1"
+        )
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "你是一个金融新闻编辑，请用200字以内概括以下新闻的整体趋势和重点。"},
+                {"role": "user", "content": "请概括以下新闻：\n" + titles_text}
+            ],
+            temperature=0.5,
+            max_tokens=300
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning(f"AI 概述生成失败: {e}")
+        return None
+
+
 # ===== 获取开启每日汇总的订阅者 =====
 def get_subscribers_by_time_with_summary():
     try:
@@ -58,6 +90,7 @@ def get_subscribers_by_time():
 
 # ===== 生成每日汇总 =====
 def generate_daily_summary():
+    """生成前一天的新闻汇总（目录 + AI 概述 + 详细列表）"""
     try:
         conn = sqlite3.connect('finance.db')
         c = conn.cursor()
@@ -73,11 +106,24 @@ def generate_daily_summary():
         html = "<h2>📋 " + today_str + " 整日汇总</h2>"
         html += "<p>共 " + str(len(rows)) + " 条新闻</p><hr>"
         
+        # ===== AI 概述（仅在每日汇总时调用） =====
+        try:
+            ai_summary = generate_ai_summary(rows)
+            if ai_summary:
+                html += "<h3>🤖 AI 概述</h3>"
+                html += '<div style="background:#f0f7ff; padding:15px; border-radius:8px; border-left:4px solid #2980b9;">'
+                html += "<p style='line-height:1.8;'>" + ai_summary + "</p>"
+                html += "</div><hr>"
+        except Exception as e:
+            logger.warning(f"AI 概述生成失败: {e}")
+        
+        # ===== 目录 =====
         html += "<h3>📑 目录</h3><ul>"
         for idx, row in enumerate(rows, 1):
             html += '<li><a href="' + row[1] + '" style="color:#2980b9;">' + row[0] + '</a> <small style="color:#888;">(' + row[2] + ')</small></li>'
         html += "</ul><hr>"
         
+        # ===== 详细新闻 =====
         html += "<h3>📰 详细新闻</h3>"
         for idx, row in enumerate(rows[:20], 1):
             html += '<div style="margin-bottom:12px; padding:8px; border-left:2px solid #ddd;">'
@@ -92,7 +138,7 @@ def generate_daily_summary():
     except Exception as e:
         logger.error("生成每日汇总失败: " + str(e))
         return None
-
+        
 # ===== 从文章页面提取摘要 =====
 def fetch_article_summary(url, headers):
     try:
