@@ -264,14 +264,34 @@ def push_news_to_api(articles):
         return False
 
 # 9. 生成邮件内容
-def generate_email_content(articles):
-    if not articles:
-        return "<h3>今日暂无财经新闻</h3>"
+def generate_email_content_from_db():
+    """从数据库读取当天所有新闻，生成邮件内容"""
     try:
+        # 连接数据库（GitHub Actions 本地数据库，但网站数据已通过 API 推送）
+        # 更可靠的方式：从 PythonAnywhere API 读取当天新闻
+        api_url = f"https://ppy.pythonanywhere.com/api/news?secret={API_SECRET}"
+        response = requests.get(api_url, timeout=10)
+        if response.status_code == 200:
+            articles = response.json()
+        else:
+            # 如果 API 失败，从本地数据库读取
+            conn = sqlite3.connect('finance.db')
+            c = conn.cursor()
+            today = datetime.now().strftime("%Y-%m-%d")
+            c.execute("SELECT title, summary, published, link, source FROM news WHERE date(created_at) = date(?) ORDER BY id DESC", (today,))
+            rows = c.fetchall()
+            conn.close()
+            articles = [{"title": r[0], "summary": r[1], "published": r[2], "link": r[3], "source": r[4]} for r in rows]
+        
+        if not articles:
+            return "<h3>今日暂无财经新闻</h3>"
+        
+        # 生成 HTML（使用你喜欢的样式）
         today = datetime.now().strftime("%Y-%m-%d")
         html = "<h2>📈 今日金融新闻简报 - " + today + "</h2>"
         html += "<p>共 " + str(len(articles)) + " 条新闻</p><hr>"
-        for idx, art in enumerate(articles[:15], 1):
+        
+        for idx, art in enumerate(articles[:30], 1):  # 显示更多
             source_tag = art.get("source", "未知来源")
             html += '<div style="margin-bottom:15px; padding:10px; border-left: 3px solid #2980b9;">'
             html += '<h3 style="margin:0 0 5px 0;">' + str(idx) + '. <a href="' + art['link'] + '" style="color:#2980b9;">' + art['title'] + '</a></h3>'
@@ -280,6 +300,7 @@ def generate_email_content(articles):
                 html += '<p style="color:#555; margin:8px 0; font-size:14px;">📌 ' + art['summary'] + '</p>'
             html += '<small style="color:#888;">🕐 ' + art['published'] + ' | 🔗 <a href="' + art['link'] + '" style="color:#2980b9;">查看原文</a></small>'
             html += '</div><hr>'
+        
         html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p>"
         html += "<p style='color:#888; font-size:12px;'>📧 如需取消订阅，请访问网站操作</p>"
         return html
