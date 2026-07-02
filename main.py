@@ -317,6 +317,156 @@ def fetch_163_news(headers):
         logger.error("网易财经抓取失败: " + str(e))
     return articles
 
+# ===== 和讯网 =====
+def fetch_hexun_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 和讯网...")
+        url = "https://www.hexun.com/"
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        for link_tag in soup.find_all('a', href=True):
+            if len(articles) >= 8:
+                break
+            href = link_tag['href']
+            title = link_tag.get_text().strip()
+            if title and len(title) > 10 and href and 'hexun.com' in str(href):
+                if href.startswith('/'):
+                    full_link = 'https://www.hexun.com' + href
+                elif href.startswith('//'):
+                    full_link = 'https:' + href
+                else:
+                    full_link = href
+                summary = fetch_article_summary(full_link, headers)
+                if not summary:
+                    summary = "来源: 和讯网"
+                articles.append({
+                    "title": title[:100],
+                    "link": full_link,
+                    "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": summary,
+                    "source": "和讯网"
+                })
+        logger.info("和讯网抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("和讯网抓取失败: " + str(e))
+    return articles
+
+# ===== 财新网 =====
+def fetch_caixin_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 财新网...")
+        url = "https://www.caixin.com/"
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        for link_tag in soup.find_all('a', href=True):
+            if len(articles) >= 8:
+                break
+            href = link_tag['href']
+            title = link_tag.get_text().strip()
+            if title and len(title) > 10 and href and 'caixin.com' in str(href):
+                if href.startswith('/'):
+                    full_link = 'https://www.caixin.com' + href
+                elif href.startswith('//'):
+                    full_link = 'https:' + href
+                else:
+                    full_link = href
+                summary = fetch_article_summary(full_link, headers)
+                if not summary:
+                    summary = "来源: 财新网"
+                articles.append({
+                    "title": title[:100],
+                    "link": full_link,
+                    "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": summary,
+                    "source": "财新网"
+                })
+        logger.info("财新网抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("财新网抓取失败: " + str(e))
+    return articles
+
+# ===== 金融界 =====
+def fetch_jrj_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 金融界...")
+        urls = [
+            "https://www.jrj.com.cn/",
+            "https://stock.jrj.com.cn/"
+        ]
+        for url in urls:
+            if len(articles) >= 8:
+                break
+            response = requests.get(url, headers=headers, timeout=10)
+            response.encoding = 'utf-8'
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for link_tag in soup.find_all('a', href=True):
+                if len(articles) >= 8:
+                    break
+                href = link_tag['href']
+                title = link_tag.get_text().strip()
+                if title and len(title) > 10 and href and 'jrj.com.cn' in str(href):
+                    if href.startswith('/'):
+                        full_link = 'https://www.jrj.com.cn' + href
+                    elif href.startswith('//'):
+                        full_link = 'https:' + href
+                    else:
+                        full_link = href
+                    summary = fetch_article_summary(full_link, headers)
+                    if not summary:
+                        summary = "来源: 金融界"
+                    articles.append({
+                        "title": title[:100],
+                        "link": full_link,
+                        "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "summary": summary,
+                        "source": "金融界"
+                    })
+        logger.info("金融界抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("金融界抓取失败: " + str(e))
+    return articles
+
+# ===== 华尔街见闻 =====
+def fetch_wallstreet_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 华尔街见闻...")
+        url = "https://wallstreetcn.com/"
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        for link_tag in soup.find_all('a', href=True):
+            if len(articles) >= 8:
+                break
+            href = link_tag['href']
+            title = link_tag.get_text().strip()
+            if title and len(title) > 10 and href and 'wallstreetcn.com' in str(href):
+                if href.startswith('/'):
+                    full_link = 'https://wallstreetcn.com' + href
+                elif href.startswith('//'):
+                    full_link = 'https:' + href
+                else:
+                    full_link = href
+                summary = fetch_article_summary(full_link, headers)
+                if not summary:
+                    summary = "来源: 华尔街见闻"
+                articles.append({
+                    "title": title[:100],
+                    "link": full_link,
+                    "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "summary": summary,
+                    "source": "华尔街见闻"
+                })
+        logger.info("华尔街见闻抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("华尔街见闻抓取失败: " + str(e))
+    return articles
+
 # ===== 主抓取函数 =====
 def fetch_news():
     logger.info("正在从多个财经网站抓取新闻...")
@@ -326,16 +476,17 @@ def fetch_news():
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
-   sources = [
-    fetch_sina_news,
-    fetch_eastmoney_news,
-    fetch_tencent_news,
-    fetch_163_news,
-    fetch_hexun_news,      # 和讯网
-    fetch_caixin_news,     # 财新网
-    fetch_ft_news,         # 金融时报中文
-    fetch_jrj_news,        # 金融界
-]
+    sources = [
+        fetch_sina_news,
+        fetch_eastmoney_news,
+        fetch_tencent_news,
+        fetch_163_news,
+        fetch_hexun_news,
+        fetch_caixin_news,
+        fetch_jrj_news,
+        fetch_wallstreet_news
+    ]
+    # ... 后续代码不变
     for fetch_func in sources:
         try:
             articles = fetch_func(headers)
