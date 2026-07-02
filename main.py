@@ -199,7 +199,7 @@ def fetch_sina_news(headers):
                     "summary": summary,
                     "source": "新浪财经"
                 })
-                if len(articles) >= 6:
+                if len(articles) >= 10:
                     break
         logger.info("新浪财经抓取到 " + str(len(articles)) + " 条")
     except Exception as e:
@@ -236,7 +236,7 @@ def fetch_eastmoney_news(headers):
                         "summary": summary,
                         "source": "东方财富"
                     })
-                    if len(articles) >= 6:
+                    if len(articles) >= 10:
                         break
         logger.info("东方财富抓取到 " + str(len(articles)) + " 条")
     except Exception as e:
@@ -273,7 +273,7 @@ def fetch_tencent_news(headers):
                         "summary": summary,
                         "source": "腾讯财经"
                     })
-                    if len(articles) >= 6:
+                    if len(articles) >= 10:
                         break
         logger.info("腾讯财经抓取到 " + str(len(articles)) + " 条")
     except Exception as e:
@@ -310,7 +310,7 @@ def fetch_163_news(headers):
                         "summary": summary,
                         "source": "网易财经"
                     })
-                    if len(articles) >= 6:
+                    if len(articles) >= 10:
                         break
         logger.info("网易财经抓取到 " + str(len(articles)) + " 条")
     except Exception as e:
