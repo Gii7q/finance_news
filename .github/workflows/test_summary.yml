@@ -14,12 +14,11 @@ jobs:
           python-version: '3.10'
       
       - name: 安装依赖
-        run: |
-          pip install requests beautifulsoup4 lxml
+        run: pip install requests beautifulsoup4 lxml
       
-      - name: 发送汇总邮件
+      - name: 创建测试脚本
         run: |
-          python -c "
+          cat > test_summary.py << 'EOF'
 import sqlite3
 import smtplib
 from email.mime.text import MIMEText
@@ -28,14 +27,16 @@ from email.header import Header
 from datetime import datetime, timedelta
 import os
 
-# ===== 配置 =====
 SENDER_EMAIL = os.getenv('SENDER_EMAIL')
 SENDER_PASSWORD = os.getenv('SENDER_PASSWORD')
 SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.qq.com')
 SMTP_PORT = int(os.getenv('SMTP_PORT', 465))
 TEST_EMAIL = '3215972859@qq.com'
 
-# ===== 生成每日汇总 =====
+if not os.path.exists('finance.db'):
+    print('❌ finance.db 不存在')
+    exit(1)
+
 conn = sqlite3.connect('finance.db')
 c = conn.cursor()
 beijing_now = datetime.utcnow() + timedelta(hours=8)
@@ -47,6 +48,8 @@ conn.close()
 if not rows:
     print('❌ 昨日无新闻')
     exit(1)
+
+print(f'✅ 找到 {len(rows)} 条新闻')
 
 today_str = (beijing_now - timedelta(days=1)).strftime('%Y年%m月%d日')
 html = '<h2>📋 ' + today_str + ' 整日汇总</h2>'
@@ -68,7 +71,6 @@ for idx, row in enumerate(rows[:20], 1):
 
 html += '<p style=\"color:gray;\">⚠️ 本简报仅供参考，不构成投资建议。</p>'
 
-# ===== 发送邮件 =====
 try:
     msg = MIMEMultipart()
     msg['From'] = SENDER_EMAIL
@@ -82,9 +84,12 @@ try:
 except Exception as e:
     print('❌ 发送失败:', e)
     exit(1)
-"
+EOF
+      
+      - name: 运行测试
         env:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        run: python test_summary.py
