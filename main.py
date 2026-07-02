@@ -3,33 +3,34 @@ import sqlite3
 import os
 import logging
 import smtplib
-import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from bs4 import BeautifulSoup
-
 logging.basicConfig(level=logging.INFO)
 
-# ===== 从环境变量读取邮箱配置（GitHub Secrets） =====
+# ===== 邮箱、网站配置（从GitHub密钥读取） =====
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.qq.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
+API_SECRET = os.getenv("API_SECRET")  # 接口密钥，和线上app一致
+SITE_URL = "https://ppy.pythonanywhere.com"  # 你的网站地址
 
-def get_subscribers():
-    """从本地 subscribers.txt 文件读取订阅者列表"""
+def get_online_subscribers():
+    """实时访问网站接口，读取所有网页订阅用户，不再读取本地txt"""
     try:
-        with open('subscribers.txt', 'r') as f:
-            emails = [line.strip() for line in f.readlines() if line.strip()]
-            logging.info("从 subscribers.txt 读取到 " + str(len(emails)) + " 个订阅者")
-            return emails
-    except FileNotFoundError:
-        logging.warning("subscribers.txt 不存在，创建空文件")
-        open('subscribers.txt', 'w').close()
-        return []
+        # 拼接带密钥的接口地址
+        api_url = f"{SITE_URL}/api/subscribers?secret={API_SECRET}"
+        resp = requests.get(api_url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        email_list = [item["email"] for item in data]
+        logging.info(f"✅ 从线上网站获取订阅用户共 {len(email_list)} 人")
+        return email_list
     except Exception as e:
-        logging.error("读取订阅者失败: " + str(e))
+        logging.error(f"❌ 拉取订阅邮箱失败：{str(e)}")
+        # 读取失败直接返回空列表，不发送邮件
         return []
 
 def fetch_article_summary(url, headers):
@@ -37,7 +38,7 @@ def fetch_article_summary(url, headers):
         response = requests.get(url, headers=headers, timeout=8)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
-        article_body = soup.find('div', {'class': 'article'}) or soup.find('div', {'id': 'article'}) or soup.find('div', class_=re.compile(r'content|article|body'))
+        article_body = soup.find('div', {'class': 'article'}) or soup.find('div', {'id': 'article'})
         if article_body:
             paragraphs = article_body.find_all('p')
             text_parts = []
@@ -230,11 +231,8 @@ def fetch_news():
 def save_to_db(articles):
     conn = sqlite3.connect('finance.db')
     c = conn.cursor()
-    
-    # 检查是否有 source 列，如果没有则重建表
     c.execute("PRAGMA table_info(news)")
     columns = [col[1] for col in c.fetchall()]
-    
     if 'source' not in columns:
         logging.info("检测到旧表结构，正在重建...")
         c.execute("DROP TABLE IF EXISTS news")
@@ -242,28 +240,11 @@ def save_to_db(articles):
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
                       title TEXT, link TEXT, published TEXT, 
                       summary TEXT, source TEXT, created_at TEXT)''')
-    
-    # 创建订阅表
     c.execute('''CREATE TABLE IF NOT EXISTS subscribers
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   email TEXT UNIQUE,
                   subscribed_at TEXT)''')
-    
     new_count = 0
-    for art in articles:
-        try:
-            c.execute("SELECT id FROM news WHERE title=?", (art["title"],))
-            if c.fetchone():
-                continue
-            c.execute("INSERT INTO news (title, link, published, summary, source, created_at) VALUES (?,?,?,?,?,?)",
-                      (art["title"], art["link"], art["published"], art["summary"], art.get("source", "未知来源"), datetime.now().isoformat()))
-            new_count += 1
-        except Exception as e:
-            logging.error("入库出错: " + str(e))
-    conn.commit()
-    conn.close()
-    logging.info("新增 " + str(new_count) + " 条新闻")
-    return new_count
     for art in articles:
         try:
             c.execute("SELECT id FROM news WHERE title=?", (art["title"],))
@@ -282,10 +263,10 @@ def save_to_db(articles):
 def send_email(articles):
     if not articles:
         logging.info("没有新新闻，跳过邮件发送")
-        return
-    subscribers = get_subscribers()
+    # 核心改动：调用线上接口读取订阅，废弃txt文件
+    subscribers = get_online_subscribers()
     if not subscribers:
-        logging.info("没有订阅者，跳过邮件发送")
+        logging.info("无任何订阅用户，跳过邮件发送")
         return
     try:
         today = datetime.now().strftime("%Y-%m-%d")
@@ -298,7 +279,7 @@ def send_email(articles):
             html += '<span style="font-size:12px; color:#2980b9; background:#e8f0fe; padding:2px 10px; border-radius:12px;">📰 ' + source_tag + '</span>'
             if art['summary'] and len(art['summary']) > 5:
                 html += '<p style="color:#555; margin:8px 0; font-size:14px;">📌 ' + art['summary'] + '</p>'
-            html += '<small style="color:#888;">🕐 ' + art['published'] + ' | 🔗 <a href="' + art['link'] + '" style="color:#2980b9;">查看原文</a></small>'
+            html += '<small style="color:#888;">🕐 ' + art['published'] + ' | 🔗 <a href="' + art['link'] + '" target="_blank">查看原文</a></small>'
             html += '</div><hr>'
         html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p>"
         html += "<p style='color:#888; font-size:12px;'>📧 如需取消订阅，请访问网站操作</p>"
@@ -312,7 +293,7 @@ def send_email(articles):
                 msg['To'] = subscriber
                 with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
                     server.login(SENDER_EMAIL, SENDER_PASSWORD)
-                    server.sendmail(SENDER_EMAIL, subscriber, msg.as_string())
+                    server.sendmail(SENDER_EMAIL, msg.as_string())
                 success_count += 1
                 logging.info("已发送到: " + subscriber)
             except Exception as e:
