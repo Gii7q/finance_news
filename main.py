@@ -69,18 +69,20 @@ def generate_email_content(news_list):
 # 4. 发送邮件（修复SMTP参数）
 def send_email(to_email, content):
     if not SENDER_EMAIL or not SENDER_PASSWORD:
-        logger.error("发件人信息未配置")
+        logger.error("发件人邮箱/授权码未配置")
         return False
     
     try:
         msg = MIMEText(content, 'plain', 'utf-8')
-        msg['From'] = Header(f"金融新闻简报<{SENDER_EMAIL}>", 'utf-8')
-        msg['To'] = Header(to_email, 'utf-8')
+        # 核心修复：From字段只用纯邮箱，去掉别名（QQ邮箱对别名格式要求极严）
+        msg['From'] = SENDER_EMAIL  # 直接填发件人邮箱，比如 "123456@qq.com"
+        msg['To'] = to_email        # 直接填收件人邮箱，去掉Header格式化
         msg['Subject'] = Header(f"【{datetime.now().strftime('%Y-%m-%d')}】金融新闻简报", 'utf-8')
 
+        # 连接SMTP服务器
         server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.sendmail(SENDER_EMAIL, [to_email], msg.as_string())  # 3个参数完整
+        server.sendmail(SENDER_EMAIL, [to_email], msg.as_string())
         server.quit()
 
         logger.info(f"✅ 发送到 {to_email} 成功")
@@ -88,7 +90,6 @@ def send_email(to_email, content):
     except Exception as e:
         logger.error(f"❌ 发送到 {to_email} 失败：{str(e)}")
         return False
-
 # 主函数
 def main():
     logger.info("开始执行...")
