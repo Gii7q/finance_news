@@ -18,14 +18,20 @@ SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.qq.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
 
 def get_subscribers():
+    """从 PythonAnywhere API 获取订阅者列表"""
     try:
-        conn = sqlite3.connect('finance.db')
-        c = conn.cursor()
-        c.execute("SELECT email FROM subscribers")
-        rows = c.fetchall()
-        conn.close()
-        return [row[0] for row in rows]
-    except:
+        response = requests.get(
+            "https://ppy.pythonanywhere.com/api/subscribers",
+            timeout=10
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return [item['email'] for item in data]
+        else:
+            logging.error("获取订阅者失败: " + str(response.status_code))
+            return []
+    except Exception as e:
+        logging.error("获取订阅者异常: " + str(e))
         return []
 
 def fetch_article_summary(url, headers):
