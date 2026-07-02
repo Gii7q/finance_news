@@ -308,6 +308,44 @@ def generate_email_content_from_db():
         logger.error("生成邮件内容失败: " + str(e))
         return "<h3>生成邮件内容失败</h3>"
 
+# 9.5 从数据库获取当天所有新闻生成邮件内容（新增）
+def generate_email_content_from_db():
+    """从本地数据库读取当天所有新闻，生成邮件内容"""
+    try:
+        conn = sqlite3.connect('finance.db')
+        c = conn.cursor()
+        today = datetime.now().strftime("%Y-%m-%d")
+        c.execute("SELECT title, summary, published, link, source FROM news WHERE date(created_at) = date(?) ORDER BY id DESC", (today,))
+        rows = c.fetchall()
+        conn.close()
+        
+        if not rows:
+            return "<h3>今日暂无财经新闻</h3>"
+        
+        articles = [{"title": r[0], "summary": r[1], "published": r[2], "link": r[3], "source": r[4]} for r in rows]
+        
+        # 生成 HTML（使用你喜欢的样式）
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        html = "<h2>📈 今日金融新闻简报 - " + today_str + "</h2>"
+        html += "<p>共 " + str(len(articles)) + " 条新闻</p><hr>"
+        
+        for idx, art in enumerate(articles[:30], 1):
+            source_tag = art.get("source", "未知来源")
+            html += '<div style="margin-bottom:15px; padding:10px; border-left: 3px solid #2980b9;">'
+            html += '<h3 style="margin:0 0 5px 0;">' + str(idx) + '. <a href="' + art['link'] + '" style="color:#2980b9;">' + art['title'] + '</a></h3>'
+            html += '<span style="font-size:12px; color:#2980b9; background:#e8f0fe; padding:2px 10px; border-radius:12px;">📰 ' + source_tag + '</span>'
+            if art['summary'] and len(art['summary']) > 5:
+                html += '<p style="color:#555; margin:8px 0; font-size:14px;">📌 ' + art['summary'] + '</p>'
+            html += '<small style="color:#888;">🕐 ' + art['published'] + ' | 🔗 <a href="' + art['link'] + '" style="color:#2980b9;">查看原文</a></small>'
+            html += '</div><hr>'
+        
+        html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p>"
+        html += "<p style='color:#888; font-size:12px;'>📧 如需取消订阅，请访问网站操作</p>"
+        return html
+    except Exception as e:
+        logger.error("从数据库生成邮件内容失败: " + str(e))
+        return "<h3>生成邮件内容失败</h3>"
+
 # 10. 发送邮件
 def send_email(to_email, content):
     if not SENDER_EMAIL or not SENDER_PASSWORD:
