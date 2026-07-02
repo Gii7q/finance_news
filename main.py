@@ -111,6 +111,7 @@ def generate_daily_summary():
         today_str = (beijing_now - timedelta(days=1)).strftime("%Y年%m月%d日")
         html = "<h2>📋 " + today_str + " 整日汇总</h2>"
         html += "<p>共 " + str(len(rows)) + " 条新闻</p><hr>"
+        html += '<p style="color:#888; font-size:12px;">📧 如需取消订阅，请访问 <a href="https://ppy.pythonanywhere.com" style="color:#2980b9; text-decoration:none;">ppy.pythonanywhere.com</a></p>'
         
         # ===== AI 概述（仅在每日汇总时调用） =====
         ai_summary = generate_ai_summary(rows)
@@ -392,8 +393,9 @@ def generate_email_content_from_db():
             html += '<small style="color:#888;">🕐 ' + art['published'] + ' | 🔗 <a href="' + art['link'] + '" style="color:#2980b9;">查看原文</a></small>'
             html += '</div><hr>'
         
-        html += "<p style='color:gray;'>⚠️ 本简报仅供参考，不构成投资建议。</p>"
-        html += "<p style='color:#888; font-size:12px;'>📧 如需取消订阅，请访问网站操作</p>"
+        html += '<hr style="border: 1px solid #eee; margin-top:20px;">'
+        html += '<p style="color:gray; font-size:12px;">⚠️ 本简报仅供参考，不构成投资建议。</p>'
+        html += '<p style="color:#888; font-size:12px;">📧 如需取消订阅，请访问 <a href="https://ppy.pythonanywhere.com" style="color:#2980b9; text-decoration:none;">ppy.pythonanywhere.com</a></p>'
         return html
     except Exception as e:
         logger.error("从数据库生成邮件内容失败: " + str(e))
