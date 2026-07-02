@@ -32,9 +32,10 @@ jobs:
           echo "========== 抓取完成 =========="
           echo "--- 检查数据库 ---"
           sqlite3 finance.db "SELECT COUNT(*) FROM news;"
-          sqlite3 finance.db "SELECT title, created_at FROM news ORDER BY id DESC LIMIT 5;"
+          echo "--- 最新5条新闻的日期 ---"
+          sqlite3 finance.db "SELECT title, substr(created_at, 1, 10) FROM news ORDER BY id DESC LIMIT 5;"
         env:
-          API_SECRET: ${{ secrets.API_SECRET }}
+            API_SECRET: ${{ secrets.API_SECRET }}
       
       - name: 创建今日汇总脚本
         run: |
