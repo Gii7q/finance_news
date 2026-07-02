@@ -596,7 +596,7 @@ def fetch_news():
         fetch_hexun_news,
         fetch_caixin_news,
         fetch_jrj_news,
-        fetch_wallstreet_news
+        fetch_wallstreet_news,
         fetch_cls_news,      # 👈 新增财联社
         fetch_yahoo_news,    # 👈 新增 Yahoo Finance
     ]
