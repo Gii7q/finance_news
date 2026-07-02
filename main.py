@@ -18,20 +18,18 @@ SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.qq.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
 
 def get_subscribers():
-    """从 PythonAnywhere API 获取订阅者列表"""
+    """从本地 subscribers.txt 文件读取订阅者列表"""
     try:
-        response = requests.get(
-            "https://ppy.pythonanywhere.com/api/subscribers",
-            timeout=10
-        )
-        if response.status_code == 200:
-            data = response.json()
-            return [item['email'] for item in data]
-        else:
-            logging.error("获取订阅者失败: " + str(response.status_code))
-            return []
+        with open('subscribers.txt', 'r') as f:
+            emails = [line.strip() for line in f.readlines() if line.strip()]
+            logging.info("从 subscribers.txt 读取到 " + str(len(emails)) + " 个订阅者")
+            return emails
+    except FileNotFoundError:
+        logging.warning("subscribers.txt 不存在，创建空文件")
+        open('subscribers.txt', 'w').close()
+        return []
     except Exception as e:
-        logging.error("获取订阅者异常: " + str(e))
+        logging.error("读取订阅者失败: " + str(e))
         return []
 
 def fetch_article_summary(url, headers):
