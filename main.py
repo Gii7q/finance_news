@@ -213,23 +213,32 @@ def fetch_163_news(headers):
     return articles
 
 # 7. 主抓取函数
+# 修改 fetch_news 函数
 def fetch_news():
     logger.info("正在从多个财经网站抓取新闻...")
     all_articles = []
+    seen_urls = set()  # 改为基于 URL 去重
     seen_titles = set()
+    
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
+    
     sources = [fetch_sina_news, fetch_eastmoney_news, fetch_tencent_news, fetch_163_news]
+    
     for fetch_func in sources:
         try:
             articles = fetch_func(headers)
             for art in articles:
-                if art['title'] not in seen_titles:
+                # 基于 URL 和标题双重去重
+                if art['link'] not in seen_urls and art['title'] not in seen_titles:
+                    seen_urls.add(art['link'])
                     seen_titles.add(art['title'])
                     all_articles.append(art)
         except Exception as e:
             logger.error("来源抓取出错: " + str(e))
+    
+    # ... 其余代码保持不变
     if len(all_articles) < 3:
         logger.info("抓取数量不足，使用备用数据")
         all_articles = [
