@@ -168,7 +168,6 @@ def fetch_article_summary(url, headers):
     except Exception:
         return ""
 
-# ===== 新浪财经抓取 =====
 def fetch_sina_news(headers):
     articles = []
     try:
@@ -177,18 +176,34 @@ def fetch_sina_news(headers):
         response = requests.get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
+        
         for link_tag in soup.find_all('a', href=True):
+            if len(articles) >= 10:
+                break
             href = link_tag['href']
             title = link_tag.get_text().strip()
-            if title and len(title) > 10 and href and '.shtml' in href:
+            
+            if not href or not title or len(title) < 8:
+                continue
+            
+            # ===== 过滤规则 =====
+            # 1. 过滤APP下载页
+            if '/desktopapp/' in href or 'download' in href:
+                logger.debug(f"跳过下载页: {title[:20]}...")
+                continue
+            
+            # 2. 过滤视频、专题、广告
+            if any(keyword in href for keyword in ['video', 'topic', 'slide', 'photo']):
+                continue
+            
+            if href and ('.shtml' in href or '.html' in href):
                 if href.startswith('/'):
                     full_link = 'https://finance.sina.com.cn' + href
                 elif href.startswith('//'):
                     full_link = 'https:' + href
                 else:
                     full_link = href
-                if any(keyword in full_link for keyword in ['video', 'topic', 'slide']):
-                    continue
+                
                 summary = fetch_article_summary(full_link, headers)
                 if not summary:
                     summary = "来源: 新浪财经"
@@ -199,8 +214,6 @@ def fetch_sina_news(headers):
                     "summary": summary,
                     "source": "新浪财经"
                 })
-                if len(articles) >= 10:
-                    break
         logger.info("新浪财经抓取到 " + str(len(articles)) + " 条")
     except Exception as e:
         logger.error("新浪财经抓取失败: " + str(e))
