@@ -125,6 +125,7 @@ jobs:
           html += '</div>'
           html += '<hr style="border: 1px solid #eee; margin-top:20px;">'
           html += '<p style="color:gray; font-size:12px;">⚠️ 本简报仅供参考，不构成投资建议。</p>'
+          html += '<p style="color:#888; font-size:12px;">📧 如需取消订阅，请访问 <a href="https://ppy.pythonanywhere.com" style="color:#2980b9; text-decoration:none;">ppy.pythonanywhere.com</a></p>'
 
           try:
               msg = MIMEMultipart()
