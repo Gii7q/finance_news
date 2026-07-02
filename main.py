@@ -467,6 +467,59 @@ def fetch_wallstreet_news(headers):
         logger.error("华尔街见闻抓取失败: " + str(e))
     return articles
 
+# ===== 财联社 =====
+def fetch_cls_news(headers):
+    articles = []
+    try:
+        logger.info("抓取 财联社...")
+        # 财联社电报/快讯页面
+        urls = [
+            "https://www.cls.cn/telegraph",
+            "https://www.cls.cn/",
+        ]
+        for url in urls:
+            if len(articles) >= 10:
+                break
+            response = requests.get(url, headers=headers, timeout=10)
+            response.encoding = 'utf-8'
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # 财联社新闻通常在 <a> 标签中
+            for link_tag in soup.find_all('a', href=True):
+                if len(articles) >= 10:
+                    break
+                href = link_tag['href']
+                title = link_tag.get_text().strip()
+                
+                # 过滤有效新闻链接
+                if title and len(title) > 10 and href and 'cls.cn' in str(href):
+                    if href.startswith('/'):
+                        full_link = 'https://www.cls.cn' + href
+                    elif href.startswith('//'):
+                        full_link = 'https:' + href
+                    else:
+                        full_link = href
+                    
+                    # 过滤非新闻链接
+                    if any(keyword in full_link for keyword in ['video', 'topic', 'slide', 'login']):
+                        continue
+                    
+                    summary = fetch_article_summary(full_link, headers)
+                    if not summary:
+                        summary = "来源: 财联社"
+                    
+                    articles.append({
+                        "title": title[:100],
+                        "link": full_link,
+                        "published": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "summary": summary,
+                        "source": "财联社"
+                    })
+        logger.info("财联社抓取到 " + str(len(articles)) + " 条")
+    except Exception as e:
+        logger.error("财联社抓取失败: " + str(e))
+    return articles
+
 # ===== 主抓取函数 =====
 def fetch_news():
     logger.info("正在从多个财经网站抓取新闻...")
@@ -485,6 +538,8 @@ def fetch_news():
         fetch_caixin_news,
         fetch_jrj_news,
         fetch_wallstreet_news
+        fetch_cls_news,      # 👈 新增财联社
+        fetch_yahoo_news,    # 👈 新增 Yahoo Finance
     ]
     # ... 后续代码不变
     for fetch_func in sources:
