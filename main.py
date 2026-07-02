@@ -350,3 +350,19 @@ def main():
 
 if __name__ == "__main__":
     main()
+# 在 main.py 末尾添加
+def push_news_to_api(articles):
+    """把新闻推送到 PythonAnywhere"""
+    import requests
+    API_SECRET = "FinanceNews20260702ABC123"
+    API_URL = f"https://ppy.pythonanywhere.com/api/news?secret={API_SECRET}"
+    
+    try:
+        response = requests.post(API_URL, json={"news": articles}, timeout=30)
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"✅ 推送新闻到网站成功，新增 {result.get('new_count', 0)} 条")
+        else:
+            logger.error(f"推送新闻失败: {response.status_code}")
+    except Exception as e:
+        logger.error(f"推送新闻异常: {e}")
