@@ -326,7 +326,16 @@ def fetch_news():
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
-    sources = [fetch_sina_news, fetch_eastmoney_news, fetch_tencent_news, fetch_163_news]
+   sources = [
+    fetch_sina_news,
+    fetch_eastmoney_news,
+    fetch_tencent_news,
+    fetch_163_news,
+    fetch_hexun_news,      # 和讯网
+    fetch_caixin_news,     # 财新网
+    fetch_ft_news,         # 金融时报中文
+    fetch_jrj_news,        # 金融界
+]
     for fetch_func in sources:
         try:
             articles = fetch_func(headers)
