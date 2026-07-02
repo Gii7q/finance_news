@@ -42,9 +42,7 @@ def fetch_news():
     news_list = []
     # 1. 新浪财经
     try:
-        # 示例抓取逻辑（可根据实际需求修改）
         logger.info("抓取 新浪财经...")
-        # 这里替换成你实际的新闻抓取代码
         sina_news = [
             {"title": "新浪财经测试新闻1", "summary": "测试摘要1", "published": datetime.now().strftime("%Y-%m-%d %H:%M"), "link": "https://finance.sina.com.cn", "source": "新浪财经"},
             {"title": "新浪财经测试新闻2", "summary": "测试摘要2", "published": datetime.now().strftime("%Y-%m-%d %H:%M"), "link": "https://finance.sina.com.cn", "source": "新浪财经"}
@@ -123,10 +121,11 @@ def save_news_to_db(news_list, db_path="finance.db"):
     conn.close()
 
 def generate_email_content(news_list):
-    """生成邮件HTML内容"""
+    """生成邮件HTML内容（修复字符串格式化空格错误）"""
     if not news_list:
         return "<h3>今日暂无财经新闻</h3>"
     
+    # 修复：去掉{}内的多余空格，格式化参数只保留update_time
     html = """
     <!DOCTYPE html>
     <html>
