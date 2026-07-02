@@ -22,6 +22,11 @@ SMTP_SERVER = "smtp.qq.com"
 SMTP_PORT = 465
 # ===============================================
 
+# ===== 获取北京时间 =====
+def get_beijing_time():
+    """获取当前北京时间"""
+    return datetime.utcnow() + timedelta(hours=8)
+
 # ===== AI 概述生成（仅在每日汇总时调用） =====
 def generate_ai_summary(rows):
     """调用 AI 生成新闻概述（仅用于每日汇总）"""
@@ -52,7 +57,6 @@ def generate_ai_summary(rows):
     except Exception as e:
         logger.warning(f"AI 概述生成失败: {e}")
         return None
-
 
 # ===== 获取开启每日汇总的订阅者 =====
 def get_subscribers_by_time_with_summary():
@@ -88,34 +92,33 @@ def get_subscribers_by_time():
         logger.error(f"调用API失败：{str(e)}")
         return {}
 
-# ===== 生成每日汇总 =====
+# ===== 生成每日汇总（含 AI 概述） =====
 def generate_daily_summary():
     """生成前一天的新闻汇总（目录 + AI 概述 + 详细列表）"""
     try:
         conn = sqlite3.connect('finance.db')
         c = conn.cursor()
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        c.execute("SELECT title, link, published, summary FROM news WHERE date(created_at) = date(?) ORDER BY id DESC", (yesterday,))
+        # 使用北京时间计算昨天
+        beijing_now = get_beijing_time()
+        yesterday = (beijing_now - timedelta(days=1)).strftime('%Y-%m-%d')
+        c.execute("SELECT title, link, published, summary FROM news WHERE substr(created_at, 1, 10) = ? ORDER BY id DESC", (yesterday,))
         rows = c.fetchall()
         conn.close()
         
         if not rows:
             return None
         
-        today_str = (datetime.now() - timedelta(days=1)).strftime("%Y年%m月%d日")
+        today_str = (beijing_now - timedelta(days=1)).strftime("%Y年%m月%d日")
         html = "<h2>📋 " + today_str + " 整日汇总</h2>"
         html += "<p>共 " + str(len(rows)) + " 条新闻</p><hr>"
         
         # ===== AI 概述（仅在每日汇总时调用） =====
-        try:
-            ai_summary = generate_ai_summary(rows)
-            if ai_summary:
-                html += "<h3>🤖 AI 概述</h3>"
-                html += '<div style="background:#f0f7ff; padding:15px; border-radius:8px; border-left:4px solid #2980b9;">'
-                html += "<p style='line-height:1.8;'>" + ai_summary + "</p>"
-                html += "</div><hr>"
-        except Exception as e:
-            logger.warning(f"AI 概述生成失败: {e}")
+        ai_summary = generate_ai_summary(rows)
+        if ai_summary:
+            html += "<h3>🤖 AI 概述</h3>"
+            html += '<div style="background:#f0f7ff; padding:15px; border-radius:8px; border-left:4px solid #2980b9;">'
+            html += "<p style='line-height:1.8;'>" + ai_summary + "</p>"
+            html += "</div><hr>"
         
         # ===== 目录 =====
         html += "<h3>📑 目录</h3><ul>"
@@ -138,7 +141,7 @@ def generate_daily_summary():
     except Exception as e:
         logger.error("生成每日汇总失败: " + str(e))
         return None
-        
+
 # ===== 从文章页面提取摘要 =====
 def fetch_article_summary(url, headers):
     try:
@@ -363,8 +366,10 @@ def generate_email_content_from_db():
     try:
         conn = sqlite3.connect('finance.db')
         c = conn.cursor()
-        today = datetime.now().strftime("%Y-%m-%d")
-        c.execute("SELECT title, summary, published, link, source FROM news WHERE date(created_at) = date(?) ORDER BY id DESC", (today,))
+        # 使用北京时间
+        beijing_now = get_beijing_time()
+        today = beijing_now.strftime('%Y-%m-%d')
+        c.execute("SELECT title, summary, published, link, source FROM news WHERE substr(created_at, 1, 10) = ? ORDER BY id DESC", (today,))
         rows = c.fetchall()
         conn.close()
         
@@ -373,7 +378,7 @@ def generate_email_content_from_db():
         
         articles = [{"title": r[0], "summary": r[1], "published": r[2], "link": r[3], "source": r[4]} for r in rows]
         
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = beijing_now.strftime("%Y-%m-%d")
         html = "<h2>📈 今日金融新闻简报 - " + today_str + "</h2>"
         html += "<p>共 " + str(len(articles)) + " 条新闻</p><hr>"
         
@@ -404,9 +409,10 @@ def send_email(to_email, content, is_summary=False):
         msg['From'] = SENDER_EMAIL
         msg['To'] = to_email
         if is_summary:
-            subject = "📋 每日新闻汇总 " + (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            beijing_now = get_beijing_time()
+            subject = "📋 每日新闻汇总 " + (beijing_now - timedelta(days=1)).strftime("%Y-%m-%d")
         else:
-            subject = "📈 金融新闻简报 " + datetime.now().strftime("%Y-%m-%d")
+            subject = "📈 金融新闻简报 " + get_beijing_time().strftime("%Y-%m-%d")
         msg['Subject'] = Header(subject, 'utf-8')
         msg.attach(MIMEText(content, 'html', 'utf-8'))
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
@@ -422,8 +428,8 @@ def send_email(to_email, content, is_summary=False):
 def main():
     logger.info("开始执行...")
     
-    now = datetime.now()
-    now_str = now.strftime("%H:%M")
+    beijing_now = get_beijing_time()
+    now_str = beijing_now.strftime("%H:%M")
     now_minutes = int(now_str.replace(':', ''))
     
     # ===== 先抓取新闻 =====
@@ -455,7 +461,6 @@ def main():
                 logger.warning("昨日无新闻，跳过汇总发送")
         else:
             logger.warning("无开启每日汇总的订阅者")
-        # 不 return，继续执行普通流程
     
     # ===== 按时间分组获取订阅者 =====
     groups = get_subscribers_by_time()
