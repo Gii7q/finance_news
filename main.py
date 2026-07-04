@@ -191,11 +191,11 @@ def fetch_article_summary(url, headers):
         
 # ==================== 清理旧新闻 ====================
 def clean_old_news():
-    """删除 30 天前的新闻"""
+    """删除 7 天前的新闻"""
     try:
         conn = sqlite3.connect('finance.db')
         c = conn.cursor()
-        cutoff = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        cutoff = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
         c.execute("DELETE FROM news WHERE date(created_at) < date(?)", (cutoff,))
         deleted = c.rowcount
         conn.commit()
