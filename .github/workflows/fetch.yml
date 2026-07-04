@@ -25,7 +25,7 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml yfinance
+          pip install requests beautifulsoup4 lxml yfinance python-dotenv
       
       # 4. 抓取新闻并发送邮件
       - name: 抓取新闻并发送邮件
