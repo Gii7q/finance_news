@@ -188,6 +188,21 @@ def fetch_article_summary(url, headers):
         return ""
     except Exception:
         return ""
+        
+# ==================== 清理旧新闻 ====================
+def clean_old_news():
+    """删除 30 天前的新闻"""
+    try:
+        conn = sqlite3.connect('finance.db')
+        c = conn.cursor()
+        cutoff = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        c.execute("DELETE FROM news WHERE date(created_at) < date(?)", (cutoff,))
+        deleted = c.rowcount
+        conn.commit()
+        conn.close()
+        logger.info(f"🧹 清理了 {deleted} 条旧新闻")
+    except Exception as e:
+        logger.error(f"清理旧新闻失败: {e}")
 
 # ==================== 各来源抓取函数 ====================
 
@@ -791,7 +806,8 @@ def main():
     beijing_now = get_beijing_time()
     now_str = beijing_now.strftime("%H:%M")
     now_minutes = int(now_str.replace(':', ''))
-    
+    clean_old_news()  # 👈 先清理旧新闻
+    # ... 后续抓取逻辑
     articles = fetch_news()
     if articles:
         push_news_to_api(articles)
