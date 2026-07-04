@@ -732,8 +732,7 @@ def generate_daily_summary():
         beijing_now = datetime.utcnow() + timedelta(hours=8)
         yesterday = (beijing_now - timedelta(days=1)).strftime('%Y-%m-%d')
         logger.info(f"📅 查询的昨天日期: {yesterday}")  # 👈 添加这行
-        c.execute("SELECT title, link, published, summary FROM news WHERE substr(created_at, 1, 10) = ? ORDER BY id DESC", (yesterday,))
-        rows = c.fetchall()
+        c.execute("SELECT title, link, published, summary FROM news WHERE substr(created_at, 1, 10) = ? ORDER BY created_at DESC", (yesterday,))
         conn.close()
         # ... 后续代码
         if not rows:
