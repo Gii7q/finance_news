@@ -273,6 +273,9 @@ def fetch_eastmoney_news(headers):
             response.encoding = 'utf-8'
             soup = BeautifulSoup(response.text, 'html.parser')
             for link_tag in soup.find_all('a', href=True):
+                 # ===== 过滤股吧 =====
+                if 'guba.eastmoney.com' in href or '/guba/' in href:
+                    continue
                 if len(articles) >= 15:
                     break
                 href = link_tag['href']
