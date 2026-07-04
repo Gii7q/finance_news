@@ -728,11 +728,13 @@ def generate_daily_summary():
     try:
         conn = sqlite3.connect('finance.db')
         c = conn.cursor()
-        beijing_now = get_beijing_time()
+        # ===== 使用北京时间计算昨天 =====
+        beijing_now = datetime.utcnow() + timedelta(hours=8)
         yesterday = (beijing_now - timedelta(days=1)).strftime('%Y-%m-%d')
         c.execute("SELECT title, link, published, summary FROM news WHERE substr(created_at, 1, 10) = ? ORDER BY id DESC", (yesterday,))
         rows = c.fetchall()
         conn.close()
+        # ... 后续代码
         if not rows:
             return None
         today_str = (beijing_now - timedelta(days=1)).strftime("%Y年%m月%d日")
