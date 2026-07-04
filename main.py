@@ -791,9 +791,9 @@ def generate_daily_summary():
                 client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
                 response = client.chat.completions.create(
                     model="deepseek-chat",
-                    messages=[{"role": "system", "content": "请用150字以内概括以下新闻的整体趋势。"}, {"role": "user", "content": titles_text}],
+                    messages=[{"role": "system", "content": "请用300字以内概括以下新闻的整体趋势。"}, {"role": "user", "content": titles_text}],
                     temperature=0.5,
-                    max_tokens=200
+                    max_tokens=400
                 )
                 ai_summary = response.choices[0].message.content.strip()
                 if ai_summary:
