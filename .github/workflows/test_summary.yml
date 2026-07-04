@@ -71,7 +71,7 @@ jobs:
           c = conn.cursor()
 
           # 获取数据库中最新新闻的日期
-          c.execute('SELECT substr(created_at, 1, 10) FROM news ORDER BY id DESC LIMIT 1')
+          c.execute('SELECT substr(created_at, 1, 10) FROM news ORDER BY created_at DESC LIMIT 1')
           latest_date_row = c.fetchone()
           beijing_now = datetime.utcnow() + timedelta(hours=8)
 
